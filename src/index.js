@@ -430,10 +430,10 @@ async function handleGetSettings(request, env) {
 		showTags: true,
 		showTimeline: true,
 		showRightSidebar: true,
-		hideEditorInWaterfall: false,
+		hideEditorInWaterfall: true,
 		showHeatmap: true, // 默认显示热力图
-		imageUploadDestination: 'local', // 默认使用R2
-		imgurClientId: '',
+		imageUploadDestination: 'imgur', // 默认使用imgur
+		imgurClientId: env.ClientId,
 		surfaceColor: '#ffffff',
 		surfaceColorDark: '#151f31',
 		surfaceOpacity: 1,
@@ -441,14 +441,14 @@ async function handleGetSettings(request, env) {
 		backgroundImage: '/bg.jpg',
 		backgroundBlur: 0,
 		waterfallCardWidth: 320,
-		enableDateGrouping: false,
-		telegramProxy: false,
+		enableDateGrouping: true,
+		telegramProxy: true,
 		showFavorites: true,  // 控制收藏夹
 		showArchive: true,      // 控制归档
 		enablePinning: true,    // 控制置顶功能
 		enableSharing: true,    // 控制分享功能
 		showDocs: true,          // 控制 Docs 链接
-		enableContentTruncation: false,
+		enableContentTruncation: true,
 	};
 
 	let savedSettings = await env.NOTES_KV.get('user_settings', 'json');
