@@ -411,12 +411,8 @@
 					return result.url;
 
 				} else if (destination === 'imgur') {
-					if (!userSettings.imgurClientId) {
-						throw new Error("Imgur Client ID is not configured in Memos settings.");
-					}
 					const formData = new FormData();
 					formData.append('file', file);
-					formData.append('clientId', userSettings.imgurClientId); // 将 Client ID 发送到我们的后端代理
 
 					// 调用后端的 Imgur 代理上传接口
 					const response = await fetch('/api/proxy/upload/imgur', {

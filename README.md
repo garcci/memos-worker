@@ -7,14 +7,13 @@
 ![1](./image/3.png)
 ![1](./image/4.png)
 
-**Memos Worker** is a powerful and high-performance serverless application for notes and knowledge management. Built entirely on the Cloudflare ecosystem (Workers, Pages, D1, R2, KV), it provides a private, cost-effective notes solution that you can own forever.
+**Memos Worker** is a powerful and high-performance serverless application for notes and knowledge management. Built entirely on the Cloudflare ecosystem (Workers, Pages, D1, KV), it provides a private, cost-effective notes solution that you can own forever.
 
 ## ✨ Features
 
 -   **✍️ Full-featured Markdown Support**: Supports real-time preview, split-screen editing, and smart pasting from rich text to Markdown.
 -   **🎛️ Flexible Views & Workflow**: Manage notes via archiving, favoriting, and pinning. Customize your display with list, waterfall, and date-grouped views.
--   **🗂️ Files & Attachments**: Supports drag-and-drop or pasting to upload images (to R2 or Imgur) and various file types.
--   **🔗 Public Sharing**: Generate unique, publicly accessible links for any individual memo or file within your notes, with optional expiration times.
+-   **🔗 Public Sharing**: Generate unique, publicly accessible links for any individual memo within your notes, with optional expiration times.
 -   **🤖 Telegram Integration**: Record text, images, videos, and files on the go via a Telegram Bot, with a proxy option to save storage space.
 -   **📚 Powerful Organization**: Automatic tagging, full-text search, timeline, calendar, and a contribution heatmap.
 -   **📃 Knowledge Base (Docs)**: A separate, tree-structured documentation center, perfect for building organized knowledge systems.
@@ -39,13 +38,12 @@ You have two ways to create your own code repository. Please choose one based on
 
 ### Step 2: Create Cloudflare Resources
 
-You need to manually create the necessary D1, R2, and KV resources in your Cloudflare Dashboard.
+You need to manually create the necessary D1 and KV resources in your Cloudflare Dashboard.
 
 | Resource Type | Recommended Name | Binding Variable Name |
 | ----------------- | ----------------- | --------------------- |
 | **D1 Database** | `notes-db` | `DB` |
 | **KV Namespace** | `notes-kv` | `NOTES_KV` |
-| **R2 Bucket** | `notes-r2-bucket` | `NOTES_R2_BUCKET` |
 
 1.  **Create D1 Database (`notes-db`)**:
 	-   Go to **Workers & Pages** -> **D1** -> **Create database**.
@@ -56,11 +54,7 @@ You need to manually create the necessary D1, R2, and KV resources in your Cloud
 	-   Go to **Workers & Pages** -> **KV** -> **Create a namespace**.
 	-   **Important**: Note down the `id`. Fill it into the `[[kv_namespaces]]` section of your `wrangler.toml` file.
 
-3.  **Create R2 Bucket (`notes-r2-bucket`)**:
-	-   Go to **R2** -> **Create bucket**.
-	-   **Important**: Note down the `bucket_name`. Fill it into the `[[r2_buckets]]` section of your `wrangler.toml` file.
-
-4.  **Commit and Push**: Save the changes to your `wrangler.toml` file and push them to your GitHub repository.
+3.  **Commit and Push**: Save the changes to your `wrangler.toml` file and push them to your GitHub repository.
 
 ### Step 3: Deploy to Cloudflare Workers
 
