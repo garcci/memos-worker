@@ -16,3 +16,8 @@ database_name = "notes-db"
 binding = "NOTES_KV"
 id = "9783bc130a354e509295b313028043cc"
 preview_id = ""
+
+[[r2_buckets]]
+binding = "NOTES_R2_BUCKET"
+bucket_name = "notes-r2-bucket"
+preview_bucket_name = "notes-files-preview"

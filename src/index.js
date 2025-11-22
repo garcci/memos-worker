@@ -145,14 +145,6 @@ async function handleApiRequest(request, env) {
 	if (request.method === 'GET' && pathname === '/api/attachments') {
 		return handleGetAllAttachments(request, env);
 	}
-
-	// 添加 Imgur 图片代理路由
-	const imgurImageMatch = pathname.match(/^\/api\/imgur\/image\/([a-zA-Z0-9-]+)$/);
-	if (imgurImageMatch && request.method === 'GET') {
-		const imageId = imgurImageMatch[1];
-		return handleImgurProxyImage(request, imageId, env);
-	}
-
 	if (request.method === 'POST' && pathname === '/api/proxy/upload/imgur') {
 		return handleImgurProxyUpload(request, env);
 	}
@@ -441,6 +433,7 @@ async function handleGetSettings(request, env) {
 		hideEditorInWaterfall: true,
 		showHeatmap: true, // 默认显示热力图
 		imageUploadDestination: 'imgur', // 默认使用imgur
+		imgurClientId: env.ClientId,
 		surfaceColor: '#ffffff',
 		surfaceColorDark: '#151f31',
 		surfaceOpacity: 1,
@@ -464,10 +457,6 @@ async function handleGetSettings(request, env) {
 	if (!savedSettings) {
 		return jsonResponse(defaultSettings);
 	}
-	
-	// 移除返回给前端的 imgurClientId 设置
-	delete savedSettings.imgurClientId;
-	
 	return jsonResponse(savedSettings);
 }
 
@@ -568,24 +557,43 @@ async function handleNotesList(request, env) {
 			case 'POST': {
 				const formData = await request.formData();
 				const content = formData.get('content')?.toString() || '';
+				const files = formData.getAll('file');
 
-				if (!content.trim()) {
-					return jsonResponse({ error: 'Content is required.' }, 400);
+				if (!content.trim() && files.every(f => !f.name)) {
+					return jsonResponse({ error: 'Content or file is required.' }, 400);
 				}
 
 				const now = Date.now();
+				const filesMeta = [];
 
-				// 在插入数据库前，先提取图片 URL
+				// 【核心修改】在插入数据库前，先提取图片 URL
 				const picUrls = extractImageUrls(content);
 
-				// 在 INSERT 语句中加入新的 pics 字段
+				// 【核心修改】在 INSERT 语句中加入新的 pics 字段
 				const insertStmt = db.prepare(
 					"INSERT INTO notes (content, files, is_pinned, created_at, updated_at, pics) VALUES (?, ?, 0, ?, ?, ?) RETURNING id"
 				);
-				// 插入空的文件数组
+				// 先用一个空的 files 数组插入
+				// 【核心修改】将提取出的 picUrls 绑定到 SQL 语句中
 				const { id: noteId } = await insertStmt.bind(content, "[]", now, now, picUrls).first();
 				if (!noteId) {
 					throw new Error("Failed to create note and get ID.");
+				}
+
+				// --- 【重要逻辑调整】现在上传的文件，只有非图片类型才算作 "附件" (files) ---
+				for (const file of files) {
+					// 只有当文件存在，并且 MIME 类型不是图片时，才将其添加到 filesMeta
+					if (file.name && file.size > 0 && !file.type.startsWith('image/')) {
+						const fileId = crypto.randomUUID();
+						await env.NOTES_R2_BUCKET.put(`${noteId}/${fileId}`, file.stream());
+						filesMeta.push({ id: fileId, name: file.name, size: file.size, type: file.type });
+					}
+				}
+
+				// 如果有非图片附件，再更新数据库中的 files 字段
+				if (filesMeta.length > 0) {
+					const updateFilesStmt = db.prepare("UPDATE notes SET files = ? WHERE id = ?");
+					await updateFilesStmt.bind(JSON.stringify(filesMeta), noteId).run();
 				}
 
 				await processNoteTags(db, noteId, content);
@@ -636,15 +644,50 @@ async function handleNoteDetail(request, noteId, env) {
 
 				if (formData.has('content')) {
 					const content = formData.get('content')?.toString() ?? existingNote.content;
+					let currentFiles = existingNote.files;
+
+					// --- 现在的文件处理只关心非图片附件 ---
+					// 处理附件删除 (逻辑不变，因为它操作的是 files 字段)
+					const filesToDelete = JSON.parse(formData.get('filesToDelete') || '[]');
+					if (filesToDelete.length > 0) {
+						const r2KeysToDelete = filesToDelete.map(fileId => `${id}/${fileId}`);
+						await env.NOTES_R2_BUCKET.delete(r2KeysToDelete);
+						currentFiles = currentFiles.filter(file => !filesToDelete.includes(file.id));
+					}
+
+					// 在处理完文件删除后，检查笔记是否应该被删除
+					const hasNewFiles = formData.getAll('file').some(f => f.name && f.size > 0);
+					if (content.trim() === '' && currentFiles.length === 0 && !hasNewFiles) {
+						// 笔记即将变空，执行删除操作
+						// 1. 删除 R2 中的所有剩余文件（如果有的话，虽然逻辑上这里 currentFiles 应该是空的）
+						const allR2Keys = existingNote.files.map(file => `${id}/${file.id}`);
+						if (allR2Keys.length > 0) {
+							await env.NOTES_R2_BUCKET.delete(allR2Keys);
+						}
+						// 2. 从数据库删除笔记
+						await db.prepare("DELETE FROM notes WHERE id = ?").bind(id).run();
+						// 3. 返回特殊标记，告知前端整个笔记已被删除
+						return jsonResponse({ success: true, noteDeleted: true });
+					}
+					// 处理新附件上传
+					const newFiles = formData.getAll('file');
+					for (const file of newFiles) {
+						// 只有当文件存在，并且不是图片时，才作为附件处理
+						if (file.name && file.size > 0 && !file.type.startsWith('image/')) {
+							const fileId = crypto.randomUUID();
+							await env.NOTES_R2_BUCKET.put(`${id}/${fileId}`, file.stream());
+							currentFiles.push({ id: fileId, name: file.name, size: file.size, type: file.type });
+						}
+					}
 
 					// 在更新数据库前，提取新的图片 URL 列表
 					const picUrls = extractImageUrls(content);
 					const newTimestamp = shouldUpdateTimestamp ? Date.now() : existingNote.updated_at;
 					// 在 UPDATE 语句中加入 pics 字段的更新
 					const stmt = db.prepare(
-						"UPDATE notes SET content = ?, updated_at = ?, pics = ? WHERE id = ?"
+						"UPDATE notes SET content = ?, files = ?, updated_at = ?, pics = ? WHERE id = ?"
 					);
-					await stmt.bind(content, newTimestamp, picUrls, id).run();
+					await stmt.bind(content, JSON.stringify(currentFiles), newTimestamp, picUrls, id).run();
 					await processNoteTags(db, id, content);
 				}
 
@@ -670,17 +713,6 @@ async function handleNoteDetail(request, noteId, env) {
 				}
 				return jsonResponse(updatedNote);
 			}
-
-			case 'DELETE': {
-				await db.prepare("DELETE FROM notes WHERE id = ?").bind(id).run();
-				return new Response(null, { status: 204 });
-			}
-		}
-	} catch (e) {
-		console.error("D1 Error:", e.message, e.cause);
-		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
-	}
-}
 
 			case 'DELETE': {
 				let allR2KeysToDelete = [];
@@ -929,7 +961,8 @@ async function handleTelegramProxy(request, env) {
 
 /**
  * - 处理来自 Telegram Bot 的 Webhook 请求
- * - 移除了文件上传相关功能，因为不再使用 R2 存储
+ * - 视频：保存 file_id，并在正文中嵌入指向 Worker 代理的链接，实现动态播放。
+ * - 图片/文件：仍然二次上传到 R2，保证永久可用。
  */
 async function handleTelegramWebhook(request, env, secret) {
 	if (!env.TELEGRAM_WEBHOOK_SECRET || secret !== env.TELEGRAM_WEBHOOK_SECRET) {
@@ -957,6 +990,7 @@ async function handleTelegramWebhook(request, env, secret) {
 		}
 
 		const db = env.DB;
+		const bucket = env.NOTES_R2_BUCKET;
 		if (!botToken) {
 			console.error("TELEGRAM_BOT_TOKEN secret is not set.");
 			return new Response('Bot not configured', { status: 500 });
@@ -992,46 +1026,69 @@ async function handleTelegramWebhook(request, env, secret) {
 			}
 		}
 
-		if (!contentFromTelegram.trim()) {
+		const photo = message.photo ? message.photo[message.photo.length - 1] : null;
+		const document = message.document;
+		const video = message.video;
+
+		if (!contentFromTelegram.trim() && !photo && !document && !video) {
 			return new Response('OK', { status: 200 });
 		}
-
+		const defaultSettings = { telegramProxy: false };
+		let userSettings = await env.NOTES_KV.get('user_settings', 'json');
+		if (!userSettings) {
+			userSettings = defaultSettings;
+		}
+		const settings = { ...defaultSettings, ...userSettings };
 		const now = Date.now();
+		let filesMeta = [];
 		let picObjects = [];
+		let videoObjects = [];
+		let mediaEmbeds = [];
 
-		const insertStmt = db.prepare("INSERT INTO notes (content, files, is_pinned, created_at, updated_at, pics) VALUES (?, ?, 0, ?, ?, ?) RETURNING id");
-		const { id: noteId } = await insertStmt.bind('', '[]', now, now, '[]').first();
+		const insertStmt = db.prepare("INSERT INTO notes (content, files, is_pinned, created_at, updated_at, pics, videos) VALUES (?, ?, 0, ?, ?, ?, ?) RETURNING id");
+		const { id: noteId } = await insertStmt.bind('', '[]', now, now, '[]', '[]').first();
 		if (!noteId) {
 			throw new Error("无法在数据库中创建笔记记录。");
 		}
 
-		const contentParts = [];
-		if (forwardInfo) contentParts.push(forwardInfo);
-		if (replyMarkdown) contentParts.push(replyMarkdown);
-		if (contentFromTelegram.trim()) contentParts.push(contentFromTelegram.trim());
+		// 图片处理（保持二次上传）
+		if (photo) {
+			const getFileUrl = `https://api.telegram.org/bot${botToken}/getFile?file_id=${photo.file_id}`;
+			const fileInfoRes = await fetch(getFileUrl);
+			const fileInfo = await fileInfoRes.json();
+			if (!fileInfo.ok) throw new Error(`Telegram getFile API 错误 (photo): ${fileInfo.description}`);
+			const filePath = fileInfo.result.file_path;
+			const fileName = `photo_${message.message_id}.${(filePath.split('.').pop() || 'jpg')}`;
+			const downloadUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
+			const fileRes = await fetch(downloadUrl);
+			if (!fileRes.ok) throw new Error("从 Telegram 下载图片失败。");
+			const fileId = crypto.randomUUID();
+			await bucket.put(`${noteId}/${fileId}`, fileRes.body);
+			const internalFileUrl = `/api/files/${noteId}/${fileId}`;
 
-		let finalContent = "#TG " + contentParts.join('\n\n');
-
-		const updateStmt = db.prepare("UPDATE notes SET content = ?, files = ?, pics = ? WHERE id = ?");
-		await updateStmt.bind(
-			finalContent,
-			JSON.stringify([]),
-			JSON.stringify(picObjects),
-			noteId
-		).run();
-
-		await processNoteTags(db, noteId, finalContent);
-		await sendTelegramMessage(chatId, `✅ 笔记已保存！ (ID: ${noteId})`, botToken);
-
-	} catch (e) {
-		console.error("Telegram Webhook Error:", e.message);
-		if (chatId && botToken) {
-			await sendTelegramMessage(chatId, `❌ 保存笔记时出错: ${e.message}`, botToken);
+			picObjects.push(internalFileUrl); // 为了兼容性，图片直接存 URL 字符串
+			mediaEmbeds.push(`![${fileName}](${internalFileUrl})`);
 		}
-	}
-	return new Response('OK', { status: 200 });
-}
 
+		if (video) {
+			if (settings.telegramProxy) {
+				// --- 代理模式 ---
+				const proxyUrl = `/api/tg-media-proxy/${video.file_id}`;
+				videoObjects.push(proxyUrl);
+				mediaEmbeds.push(`<video src="${proxyUrl}" width="100%" controls muted></video>`);
+			} else {
+				// --- 二次上传模式 ---
+				const getFileUrl = `https://api.telegram.org/bot${botToken}/getFile?file_id=${video.file_id}`;
+				const fileInfoRes = await fetch(getFileUrl);
+				const fileInfo = await fileInfoRes.json();
+				if (!fileInfo.ok) throw new Error(`Telegram getFile API 错误 (video): ${fileInfo.description}`);
+				const downloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.result.file_path}`;
+				const fileRes = await fetch(downloadUrl);
+				if (!fileRes.ok) throw new Error("从 Telegram 下载视频失败。");
+				const fileId = crypto.randomUUID();
+				await bucket.put(`${noteId}/${fileId}`, fileRes.body);
+				const internalFileUrl = `/api/files/${noteId}/${fileId}`;
+				videoObjects.push(internalFileUrl);
 				mediaEmbeds.push(`<video src="${internalFileUrl}" width="100%" controls muted></video>`);
 			}
 		}
@@ -1231,10 +1288,10 @@ async function handleStandaloneImageUpload(request, env) {
 async function handleImgurProxyUpload(request, env) {
 	try {
 		const formData = await request.formData();
-		// 使用环境变量中的 Client ID，而不是从前端传递
-		const clientId = env.IMGUR_CLIENT_ID;
+		// 【注意】从前端获取 Client ID，而不是硬编码在后端
+		const clientId = formData.get('clientId');
 		if (!clientId) {
-			return jsonResponse({ error: 'Imgur Client ID is not configured on server.' }, 500);
+			return jsonResponse({ error: 'Imgur Client ID is required.' }, 400);
 		}
 
 		// Imgur 需要 'image' 字段
@@ -1252,7 +1309,7 @@ async function handleImgurProxyUpload(request, env) {
 
 		if (!imgurResponse.ok) {
 			const errorBody = await imgurResponse.json();
-			throw new Error(`Imgur API responded with status ${imgurResponse.status}: ${errorBody.data?.error || 'Unknown error'}`);
+			throw new Error(`Imgur API responded with status ${imgurResponse.status}: ${errorBody.data.error}`);
 		}
 
 		const result = await imgurResponse.json();
@@ -1261,74 +1318,11 @@ async function handleImgurProxyUpload(request, env) {
 			throw new Error('Imgur API returned a failure response.');
 		}
 
-		// 保存图片信息到 R2 以提供代理访问
-		const imageId = crypto.randomUUID();
-		const r2Key = `imgur/${imageId}`;
-		
-		// 存储图片信息而不是图片本身
-		const imageInfo = {
-			imgurUrl: result.data.link,
-			uploaded: Date.now(),
-			deleteHash: result.data.deletehash
-		};
-		
-		await env.NOTES_R2_BUCKET.put(r2Key, JSON.stringify(imageInfo), {
-			httpMetadata: { contentType: 'application/json' } 
-		});
-
-		// 返回代理 URL 而不是原始 Imgur URL
-		const { protocol, host } = new URL(request.url);
-		const proxyUrl = `${protocol}//${host}/api/imgur/image/${imageId}`;
-		
-		return jsonResponse({ 
-			success: true, 
-			url: proxyUrl,
-			imgurUrl: result.data.link // 也返回原始 URL 以备不时之需
-		});
+		return jsonResponse({ success: true, url: result.data.link });
 
 	} catch (e) {
 		console.error("Imgur Proxy Error:", e.message);
 		return jsonResponse({ error: 'Imgur upload failed via proxy', message: e.message }, 500);
-	}
-}
-
-/**
- * 处理对代理 Imgur 图片的访问请求
- * GET /api/imgur/image/:imageId
- */
-async function handleImgurProxyImage(request, imageId, env) {
-	try {
-		const r2Key = `imgur/${imageId}`;
-		const object = await env.NOTES_R2_BUCKET.get(r2Key);
-
-		if (object === null) {
-			return new Response('Image not found', { status: 404 });
-		}
-
-		// 获取存储的图片信息
-		const imageInfo = await object.json();
-		
-		// 从 Imgur 获取图片
-		const imgurResponse = await fetch(imageInfo.imgurUrl);
-		
-		if (!imgurResponse.ok) {
-			return new Response('Failed to fetch image from Imgur', { status: 500 });
-		}
-
-		// 转发 Imgur 响应，但使用自己的缓存头
-		const headers = new Headers(imgurResponse.headers);
-		headers.set('Cache-Control', 'public, max-age=31536000, immutable'); // 1年缓存
-		headers.set('Content-Security-Policy', "default-src 'self'; img-src *;"); // 添加安全头
-		
-		return new Response(imgurResponse.body, {
-			status: imgurResponse.status,
-			statusText: imgurResponse.statusText,
-			headers
-		});
-
-	} catch (e) {
-		console.error("Imgur Proxy Image Error:", e.message);
-		return new Response('Server Error', { status: 500 });
 	}
 }
 
@@ -1392,14 +1386,6 @@ async function handleGetAllAttachments(request, env) {
 
 /**
  * 根据 ID 从 R2 中提供（服务）一个独立上传的图片
- * 该功能将被移除，因为不再使用 R2 存储
- */
-async function handleServeStandaloneImage(imageId, env) {
-	return new Response('File not found', { status: 404 });
-}
-
-/**
- * 根据 ID 从 R2 中提供（服务）一个独立上传的图片
  * @param {string} imageId The UUID of the image.
  * @param {object} env The Worker environment/bindings.
  * @returns {Promise<Response>}
@@ -1410,21 +1396,6 @@ async function handleServeStandaloneImage(imageId, env) {
 
 	if (object === null) {
 		return new Response('File not found', { status: 404 });
-	}
-
-	const headers = new Headers();
-	object.writeHttpMetadata(headers);
-	headers.set('Cache-Control', 'public, max-age=31536000');
-
-	return new Response(object.body, {
-		headers,
-	});
-}
-
-async function handleFileRequest(noteId, fileId, request, env) {
-	return new Response('File not found', { status: 404 });
-}
-
 	}
 
 	const headers = new Headers();
@@ -1661,22 +1632,59 @@ async function handleDocsNodeRename(request, nodeId, env) {
 
 /**
  * 为文件生成一个唯一的、可公开访问的链接。
- * 该功能将被移除，因为不再使用 R2 存储
+ * POST /api/notes/:noteId/files/:fileId/share
  */
 async function handleShareFileRequest(noteId, fileId, request, env) {
-	return jsonResponse({ error: 'File sharing not supported' }, 400);
-}
+	const db = env.DB;
+	const id = parseInt(noteId);
+	if (isNaN(id)) {
+		return new Response('Invalid Note ID', { status: 400 });
+	}
 
-async function handleGetAllAttachments(request, env) {
-	return jsonResponse({ error: 'Attachments not supported' }, 400);
-}
+	try {
+		const note = await db.prepare("SELECT files FROM notes WHERE id = ?").bind(id).first();
+		if (!note) {
+			return jsonResponse({ error: 'Note not found' }, 404);
+		}
 
-/**
- * 处理对公开文件链接的访问请求，无需身份验证。
- * 该功能将被移除，因为不再使用 R2 存储
- */
-async function handlePublicFileRequest(publicId, request, env) {
-	return new Response('Public file not found', { status: 404 });
+		let files = [];
+		try {
+			if (typeof note.files === 'string') {
+				files = JSON.parse(note.files);
+			}
+		} catch(e) { /* ignore */ }
+
+		const fileIndex = files.findIndex(f => f.id === fileId);
+		if (fileIndex === -1) {
+			return jsonResponse({ error: 'File not found in this note' }, 404);
+		}
+
+		const file = files[fileIndex];
+		let publicId = file.public_id;
+
+		if (!publicId) {
+			publicId = crypto.randomUUID();
+			// 1. 在 KV 中存储映射关系，用于快速、免认证的查找
+			await env.NOTES_KV.put(`public_file:${publicId}`, JSON.stringify({
+				noteId: id,
+				fileId: file.id,
+				fileName: file.name,
+				contentType: file.type
+			}));
+
+			// 2. 将 public_id 持久化到 D1 数据库中
+			files[fileIndex].public_id = publicId;
+			await db.prepare("UPDATE notes SET files = ? WHERE id = ?").bind(JSON.stringify(files), id).run();
+		}
+
+		const { protocol, host } = new URL(request.url);
+		const publicUrl = `${protocol}//${host}/api/public/file/${publicId}`;
+
+		return jsonResponse({ url: publicUrl });
+	} catch (e) {
+		console.error(`Share File Error (noteId: ${noteId}, fileId: ${fileId}):`, e.message);
+		return jsonResponse({ error: 'Database error while generating link', message: e.message }, 500);
+	}
 }
 
 /**
