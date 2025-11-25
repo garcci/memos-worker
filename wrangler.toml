@@ -15,9 +15,7 @@ database_name = "notes-db"
 [[kv_namespaces]]
 binding = "NOTES_KV"
 id = "e66f0f3bfd9649959de3665e432fa6c9"
-preview_id = ""
 
 [[r2_buckets]]
 binding = "NOTES_R2_BUCKET"
 bucket_name = "notes-r2-bucket"
-preview_bucket_name = ""
