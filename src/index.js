@@ -442,7 +442,7 @@ async function handleGetSettings(request, env) {
 		backgroundBlur: 0,
 		waterfallCardWidth: 320,
 		enableDateGrouping: false,
-		telegramProxy: false,
+		telegramProxy: true,
 		showFavorites: true,  // 控制收藏夹
 		showArchive: true,      // 控制归档
 		enablePinning: true,    // 控制置顶功能
@@ -1033,7 +1033,7 @@ async function handleTelegramWebhook(request, env, secret) {
 		if (!contentFromTelegram.trim() && !photo && !document && !video) {
 			return new Response('OK', { status: 200 });
 		}
-		const defaultSettings = { telegramProxy: false };
+		const defaultSettings = { telegramProxy: true };
 		let userSettings = await env.NOTES_KV.get('user_settings', 'json');
 		if (!userSettings) {
 			userSettings = defaultSettings;
