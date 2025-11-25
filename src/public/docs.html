@@ -389,11 +389,11 @@
 		} catch (error) {
 			console.error("Failed to load Memos settings, defaulting to local upload:", error);
 			// 提供一个安全的回退默认值
-			userSettings = { imageUploadDestination: 'local' };
+			userSettings = { imageUploadDestination: 'imgur' };
 		}
 
 		async function uploadImage(file) {
-			const destination = userSettings.imageUploadDestination || 'local';
+			const destination = userSettings.imageUploadDestination || 'imgur';
 			console.log(`Uploading image via: ${destination}`);
 
 			try {

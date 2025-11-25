@@ -3628,13 +3628,13 @@
 				<div id='image-upload-options'>
 					<div class='setting-item'>
 						<label for='upload-dest-local'>
-							<input type='radio' id='upload-dest-local' name='upload-destination' value='local' checked>
+							<input type='radio' id='upload-dest-local' name='upload-destination' value='local'>
 							Local (via Worker & R2)
 						</label>
 					</div>
 					<div class='setting-item'>
 						<label for='upload-dest-imgur'>
-							<input type='radio' id='upload-dest-imgur' name='upload-destination' value='imgur'>
+							<input type='radio' id='upload-dest-imgur' name='upload-destination' value='imgur' checked>
 							Imgur (Requires Client ID)
 						</label>
 					</div>
@@ -4082,7 +4082,7 @@
 		const placeholderMarkdown = `![Uploading image... ${placeholderId}]()`;
 		insertTextAtCursor(textarea, placeholderMarkdown);
 		try {
-			const destination = settings.imageUploadDestination || 'local';
+			const destination = settings.imageUploadDestination || 'imgur';
 			let finalUrl;
 			switch (destination) {
 				case 'imgur':
@@ -4133,7 +4133,7 @@
 	const defaultSettings = {
 		showSearchBar: true, showStatsCard: true, showCalendar: true, showTags: true,
 		showTimeline: true, showRightSidebar: true, hideEditorInWaterfall: false,
-		showHeatmap: true, imageUploadDestination: 'local', imgurClientId: '',
+		showHeatmap: true, imageUploadDestination: 'imgur', imgurClientId: '',
 		surfaceColor: '#ffffff', surfaceColorDark: '#151f31', surfaceOpacity: 1,
 		backgroundOpacity: 1, backgroundImage: '/bg.jpg', backgroundBlur: 0,
 		waterfallCardWidth: 320, enableDateGrouping: false, telegramProxy: false,
@@ -5486,7 +5486,7 @@
 		notesSection.classList.toggle('date-grouping-enabled', settings.enableDateGrouping);
 
 		const areAllSidebarsHidden = !settings.showSearchBar && !settings.showStatsCard && !settings.showCalendar && !settings.showTags && !settings.showTimeline;
-		const currentDest = settings.imageUploadDestination || 'local';
+		const currentDest = settings.imageUploadDestination || 'imgur';
 		const radioToCheck = document.getElementById(`upload-dest-${currentDest}`);
 		if (radioToCheck) {
 			radioToCheck.checked = true;

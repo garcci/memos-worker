@@ -432,8 +432,8 @@ async function handleGetSettings(request, env) {
 		showRightSidebar: true,
 		hideEditorInWaterfall: false,
 		showHeatmap: true, // 默认显示热力图
-		imageUploadDestination: 'local', // 默认使用R2
-		imgurClientId: '',
+		imageUploadDestination: 'imgur', // 默认使用imgur
+		imgurClientId: env.IMGUR_CLIENT_ID,
 		surfaceColor: '#ffffff',
 		surfaceColorDark: '#151f31',
 		surfaceOpacity: 1,
