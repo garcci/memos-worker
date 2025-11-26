@@ -1145,7 +1145,7 @@ async function handleTelegramWebhook(request, env, secret) {
 
 		await processNoteTags(db, noteId, finalContent);
 		await sendTelegramMessage(chatId, `✅ 笔记已保存！ (ID: ${noteId})`, botToken);
-		await sendTelegramMessage(chatId, `${update.toString()}`, botToken);
+		await sendTelegramMessage(chatId, JSON.stringify(update), botToken);
 
 	} catch (e) {
 		console.error("Telegram Webhook Error:", e.message);
