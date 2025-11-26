@@ -1031,7 +1031,7 @@ async function handleTelegramWebhook(request, env, secret) {
 		const video = message.video;
 		const imgUrl = message.imgUrl;
 
-		if (!contentFromTelegram.trim() && !photo && !document && !video) {
+		if (!contentFromTelegram.trim() && !photo && !document && !video && !imgUrl) {
 			return new Response('OK', { status: 200 });
 		}
 		const defaultSettings = { telegramProxy: true };
