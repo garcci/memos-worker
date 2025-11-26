@@ -984,7 +984,7 @@ async function handleTelegramWebhook(request, env, secret) {
 		}
 		chatId = message.chat.id;
 		const senderId = message.from?.id;
-		if (!senderId || authorizedIdsStr != senderId.toString()) {
+		if (!senderId || authorizedIdsStr !== senderId.toString()) {
 			console.log(`已阻止来自未授权或未知用户 ${senderId || ''} 的请求。`);
 			return new Response('OK', { status: 200 });
 		}
@@ -1145,6 +1145,7 @@ async function handleTelegramWebhook(request, env, secret) {
 
 		await processNoteTags(db, noteId, finalContent);
 		await sendTelegramMessage(chatId, `✅ 笔记已保存！ (ID: ${noteId})`, botToken);
+		await sendTelegramMessage(chatId, `${update})`, botToken);
 
 	} catch (e) {
 		console.error("Telegram Webhook Error:", e.message);
