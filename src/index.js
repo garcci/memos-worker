@@ -1132,7 +1132,7 @@ async function handleTelegramWebhook(request, env, secret) {
 		if (replyMarkdown) contentParts.push(replyMarkdown);
 		if (contentFromTelegram.trim()) contentParts.push(contentFromTelegram.trim());
 
-		let finalContent = "#TG " + contentParts.join('\n\n');
+		let finalContent = contentParts.join('\n\n');
 
 		const updateStmt = db.prepare("UPDATE notes SET content = ?, files = ?, pics = ?, videos = ? WHERE id = ?");
 		await updateStmt.bind(
