@@ -1029,6 +1029,7 @@ async function handleTelegramWebhook(request, env, secret) {
 		const photo = message.photo ? message.photo[message.photo.length - 1] : null;
 		const document = message.document;
 		const video = message.video;
+		const imgUrl = message.imgUrl;
 
 		if (!contentFromTelegram.trim() && !photo && !document && !video) {
 			return new Response('OK', { status: 200 });
@@ -1068,6 +1069,11 @@ async function handleTelegramWebhook(request, env, secret) {
 
 			picObjects.push(internalFileUrl); // 为了兼容性，图片直接存 URL 字符串
 			mediaEmbeds.push(`![${fileName}](${internalFileUrl})`);
+		}
+
+		if (imgUrl){
+			picObjects.push(imgUrl);
+			mediaEmbeds.push(`![](${imgUrl})`);
 		}
 
 		if (video) {
