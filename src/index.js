@@ -1073,7 +1073,7 @@ async function handleTelegramWebhook(request, env, secret) {
 
 		if (imgUrl){
 			picObjects.push(imgUrl);
-			mediaEmbeds.push(`![](${imgUrl})`);
+			// mediaEmbeds.push(`![](${imgUrl})`);
 		}
 
 		if (video) {
