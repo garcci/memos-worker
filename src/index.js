@@ -1140,12 +1140,13 @@ async function handleTelegramWebhook(request, env, secret) {
 
 		let finalContent = contentParts.join('\n\n');
 
-		const updateStmt = db.prepare("UPDATE notes SET content = ?, files = ?, pics = ?, videos = ? WHERE id = ?");
+		const updateStmt = db.prepare("UPDATE notes SET content = ?, files = ?, pics = ?, videos = ?,is_archived = ? WHERE id = ?");
 		await updateStmt.bind(
 			finalContent,
 			JSON.stringify(filesMeta),
 			JSON.stringify(picObjects),
 			JSON.stringify(videoObjects), // [新增] 绑定 videoObjects
+			imgUrl ? 1 : 0,
 			noteId
 		).run();
 
