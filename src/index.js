@@ -1,10 +1,10 @@
 const NOTES_PER_PAGE = 10;
-const SESSION_DURATION_SECONDS = 30*86400; // Session 有效期: 30 天
+const SESSION_DURATION_SECONDS = 30 * 86400; // Session 有效期: 30 天
 const SESSION_COOKIE = '__session';
 export default {
 	async fetch(request, env, ctx) {
 		return await handleApiRequest(request, env);
-	},
+	}
 };
 
 /**
@@ -183,9 +183,9 @@ async function handleApiRequest(request, env) {
 async function handleStatsRequest(request, env) {
 	const db = env.DB;
 	try {
-		const memosCountQuery = db.prepare("SELECT COUNT(*) as total FROM notes");
-		const tagsCountQuery = db.prepare("SELECT COUNT(DISTINCT tag_id) as total FROM note_tags");
-		const oldestNoteQuery = db.prepare("SELECT MIN(updated_at) as oldest_ts FROM notes");
+		const memosCountQuery = db.prepare('SELECT COUNT(*) as total FROM notes');
+		const tagsCountQuery = db.prepare('SELECT COUNT(DISTINCT tag_id) as total FROM note_tags');
+		const oldestNoteQuery = db.prepare('SELECT MIN(updated_at) as oldest_ts FROM notes');
 
 		// 使用 Promise.all 并行执行所有查询，以获得最佳性能
 		const [memosResult, tagsResult, oldestNoteResult] = await Promise.all([
@@ -202,7 +202,7 @@ async function handleStatsRequest(request, env) {
 		};
 		return jsonResponse(stats);
 	} catch (e) {
-		console.error("Stats Error:", e.message);
+		console.error('Stats Error:', e.message);
 		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
 	}
 }
@@ -218,7 +218,7 @@ async function handleTimelineRequest(request, env) {
 		// D1 不直接支持 strftime 或 to_char, 我们需要获取所有创建时间，然后在 JS 中处理
 		// 注意：如果笔记数量巨大 (几十万条)，这个查询可能会有性能问题。
 		// 对于几千到几万条笔记，这是完全可以接受的。
-		const stmt = db.prepare("SELECT updated_at FROM notes ORDER BY updated_at DESC");
+		const stmt = db.prepare('SELECT updated_at FROM notes ORDER BY updated_at DESC');
 		const { results } = await stmt.all();
 		if (!results) {
 			return jsonResponse({});
@@ -227,7 +227,7 @@ async function handleTimelineRequest(request, env) {
 			timeZone: timezone,
 			year: 'numeric',
 			month: 'numeric',
-			day: 'numeric',
+			day: 'numeric'
 		});
 		// 在 JavaScript 中进行分组统计
 		const timeline = {};
@@ -257,10 +257,11 @@ async function handleTimelineRequest(request, env) {
 		}
 		return jsonResponse(timeline);
 	} catch (e) {
-		console.error("Timeline Error:", e.message);
+		console.error('Timeline Error:', e.message);
 		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
 	}
 }
+
 /**
  * 处理全文搜索请求，支持分页和叠加筛选条件
  */
@@ -289,17 +290,17 @@ async function handleSearchRequest(request, env) {
 
 	const db = env.DB;
 	try {
-		let whereClauses = ["notes_fts MATCH ?"];
+		let whereClauses = ['notes_fts MATCH ?'];
 		let bindings = [query + '*'];
-		let joinClause = "";
+		let joinClause = '';
 		if (isFavoritesMode) {
-			whereClauses.push("n.is_favorited = 1");
+			whereClauses.push('n.is_favorited = 1');
 		}
 		if (startTimestamp && endTimestamp) {
 			const startMs = parseInt(startTimestamp);
 			const endMs = parseInt(endTimestamp);
 			if (!isNaN(startMs) && !isNaN(endMs)) {
-				whereClauses.push("n.updated_at >= ? AND n.updated_at < ?");
+				whereClauses.push('n.updated_at >= ? AND n.updated_at < ?');
 				bindings.push(startMs, endMs);
 			}
 		}
@@ -308,19 +309,20 @@ async function handleSearchRequest(request, env) {
                 JOIN note_tags nt ON n.id = nt.note_id
                 JOIN tags t ON nt.tag_id = t.id
             `;
-			whereClauses.push("t.name = ?");
+			whereClauses.push('t.name = ?');
 			bindings.push(tagName);
 		}
 
-		const whereString = whereClauses.join(" AND ");
+		const whereString = whereClauses.join(' AND ');
 		const stmt = db.prepare(`
-            SELECT n.* FROM notes n
-            JOIN notes_fts fts ON n.id = fts.rowid
-            ${joinClause}
-            WHERE ${whereString}
-            ORDER BY rank
-            LIMIT ? OFFSET ?
-        `);
+	  SELECT n.*
+	  FROM notes n
+			 JOIN notes_fts fts ON n.id = fts.rowid
+		${joinClause}
+	  WHERE ${whereString}
+	  ORDER BY rank
+	  LIMIT ? OFFSET ?
+		`);
 
 		bindings.push(limit + 1, offset);
 		const { results: notesPlusOne } = await stmt.bind(...bindings).all();
@@ -330,12 +332,16 @@ async function handleSearchRequest(request, env) {
 
 		notes.forEach(note => {
 			if (typeof note.files === 'string') {
-				try { note.files = JSON.parse(note.files); } catch (e) { note.files = []; }
+				try {
+					note.files = JSON.parse(note.files);
+				} catch (e) {
+					note.files = [];
+				}
 			}
 		});
 		return jsonResponse({ notes, hasMore });
 	} catch (e) {
-		console.error("Search Error:", e.message);
+		console.error('Search Error:', e.message);
 		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
 	}
 }
@@ -349,17 +355,17 @@ async function handleTagsList(request, env) {
 		// 使用 LEFT JOIN 和 COUNT 来统计每个标签关联的笔记数量
 		// ORDER BY count DESC, name ASC 实现了按数量降序、名称升序的排序
 		const stmt = db.prepare(`
-            SELECT t.name, COUNT(nt.note_id) as count
-            FROM tags t
-            LEFT JOIN note_tags nt ON t.id = nt.tag_id
-            GROUP BY t.id, t.name
-            HAVING count > 0 -- 只返回被使用过的标签
-            ORDER BY count DESC, t.name ASC
-        `);
+	  SELECT t.name, COUNT(nt.note_id) as count
+	  FROM tags t
+			 LEFT JOIN note_tags nt ON t.id = nt.tag_id
+	  GROUP BY t.id, t.name
+	  HAVING count > 0 -- 只返回被使用过的标签
+	  ORDER BY count DESC, t.name ASC
+		`);
 		const { results } = await stmt.all();
 		return jsonResponse(results);
 	} catch (e) {
-		console.error("Tags List Error:", e.message);
+		console.error('Tags List Error:', e.message);
 		return jsonResponse({ error: 'Database Error' }, 500);
 	}
 }
@@ -391,14 +397,14 @@ async function handleLogin(request, env) {
 			const sessionId = crypto.randomUUID();
 			const sessionData = { username, loggedInAt: Date.now() };
 			await env.NOTES_KV.put(`session:${sessionId}`, JSON.stringify(sessionData), {
-				expirationTtl: SESSION_DURATION_SECONDS,
+				expirationTtl: SESSION_DURATION_SECONDS
 			});
 			const headers = new Headers();
 			headers.append('Set-Cookie', `${SESSION_COOKIE}=${sessionId}; HttpOnly; Secure; SameSite=Strict; Max-Age=${SESSION_DURATION_SECONDS}`);
 			return jsonResponse({ success: true }, 200, headers);
 		}
 	} catch (e) {
-		console.error("Login Error:", e.message);
+		console.error('Login Error:', e.message);
 	}
 	return jsonResponse({ error: 'Invalid credentials' }, 401);
 }
@@ -448,7 +454,7 @@ async function handleGetSettings(request, env) {
 		enablePinning: true,    // 控制置顶功能
 		enableSharing: true,    // 控制分享功能
 		showDocs: true,          // 控制 Docs 链接
-		enableContentTruncation: false,
+		enableContentTruncation: false
 	};
 
 	let savedSettings = await env.NOTES_KV.get('user_settings', 'json');
@@ -469,7 +475,7 @@ async function handleSetSettings(request, env) {
 		await env.NOTES_KV.put('user_settings', JSON.stringify(settingsToSave));
 		return jsonResponse({ success: true });
 	} catch (e) {
-		console.error("Set Settings Error:", e.message);
+		console.error('Set Settings Error:', e.message);
 		return jsonResponse({ error: 'Failed to save settings' }, 500);
 	}
 }
@@ -496,13 +502,13 @@ async function handleNotesList(request, env) {
 
 				let whereClauses = [];
 				let bindings = [];
-				let joinClause = "";
+				let joinClause = '';
 
 				if (isArchivedMode) {
-					whereClauses.push("n.is_archived = 1");
+					whereClauses.push('n.is_archived = 1');
 				} else {
 					// 默认（包括收藏夹）都应该排除已归档的
-					whereClauses.push("n.is_archived = 0");
+					whereClauses.push('n.is_archived = 0');
 				}
 
 				if (startTimestamp && endTimestamp) {
@@ -511,7 +517,7 @@ async function handleNotesList(request, env) {
 					const endMs = parseInt(endTimestamp);
 
 					if (!isNaN(startMs) && !isNaN(endMs)) {
-						whereClauses.push("updated_at >= ? AND updated_at < ?");
+						whereClauses.push('updated_at >= ? AND updated_at < ?');
 						bindings.push(startMs, endMs);
 					}
 				}
@@ -520,21 +526,22 @@ async function handleNotesList(request, env) {
                     JOIN note_tags nt ON n.id = nt.note_id
                     JOIN tags t ON nt.tag_id = t.id
                 `;
-					whereClauses.push("t.name = ?");
+					whereClauses.push('t.name = ?');
 					bindings.push(tagName);
 				}
 				if (isFavoritesMode) {
-					whereClauses.push("n.is_favorited = 1");
+					whereClauses.push('n.is_favorited = 1');
 				}
-				const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+				const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
 				const query = `
-                SELECT n.* FROM notes n
-                ${joinClause}
-                ${whereClause}
-                ORDER BY n.is_pinned DESC, n.updated_at DESC
-                LIMIT ? OFFSET ?
-            `;
+		  SELECT n.*
+		  FROM notes n
+			${joinClause} ${whereClause}
+		  ORDER BY n.is_pinned
+		  DESC, n.updated_at DESC
+			LIMIT ? OFFSET ?
+				`;
 
 				// 将分页参数添加到 bindings 数组的末尾
 				bindings.push(limit + 1, offset);
@@ -547,7 +554,11 @@ async function handleNotesList(request, env) {
 
 				notes.forEach(note => {
 					if (typeof note.files === 'string') {
-						try { note.files = JSON.parse(note.files); } catch (e) { note.files = []; }
+						try {
+							note.files = JSON.parse(note.files);
+						} catch (e) {
+							note.files = [];
+						}
 					}
 				});
 
@@ -571,13 +582,13 @@ async function handleNotesList(request, env) {
 
 				// 【核心修改】在 INSERT 语句中加入新的 pics 字段
 				const insertStmt = db.prepare(
-					"INSERT INTO notes (content, files, is_pinned, created_at, updated_at, pics) VALUES (?, ?, 0, ?, ?, ?) RETURNING id"
+					'INSERT INTO notes (content, files, is_pinned, created_at, updated_at, pics) VALUES (?, ?, 0, ?, ?, ?) RETURNING id'
 				);
 				// 先用一个空的 files 数组插入
 				// 【核心修改】将提取出的 picUrls 绑定到 SQL 语句中
-				const { id: noteId } = await insertStmt.bind(content, "[]", now, now, picUrls).first();
+				const { id: noteId } = await insertStmt.bind(content, '[]', now, now, picUrls).first();
 				if (!noteId) {
-					throw new Error("Failed to create note and get ID.");
+					throw new Error('Failed to create note and get ID.');
 				}
 
 				// --- 【重要逻辑调整】现在上传的文件，只有非图片类型才算作 "附件" (files) ---
@@ -592,13 +603,13 @@ async function handleNotesList(request, env) {
 
 				// 如果有非图片附件，再更新数据库中的 files 字段
 				if (filesMeta.length > 0) {
-					const updateFilesStmt = db.prepare("UPDATE notes SET files = ? WHERE id = ?");
+					const updateFilesStmt = db.prepare('UPDATE notes SET files = ? WHERE id = ?');
 					await updateFilesStmt.bind(JSON.stringify(filesMeta), noteId).run();
 				}
 
 				await processNoteTags(db, noteId, content);
 				// 获取完整的笔记返回给前端
-				const newNote = await db.prepare("SELECT * FROM notes WHERE id = ?").bind(noteId).first();
+				const newNote = await db.prepare('SELECT * FROM notes WHERE id = ?').bind(noteId).first();
 				if (typeof newNote.files === 'string') {
 					newNote.files = JSON.parse(newNote.files);
 				}
@@ -607,7 +618,7 @@ async function handleNotesList(request, env) {
 			}
 		}
 	} catch (e) {
-		console.error("D1 Error:", e.message, e.cause);
+		console.error('D1 Error:', e.message, e.cause);
 		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
 	}
 }
@@ -624,7 +635,7 @@ async function handleNoteDetail(request, noteId, env) {
 
 	try {
 		// 首先获取现有笔记，用于文件删除和返回数据
-		let existingNote = await db.prepare("SELECT * FROM notes WHERE id = ?").bind(id).first();
+		let existingNote = await db.prepare('SELECT * FROM notes WHERE id = ?').bind(id).first();
 		if (!existingNote) {
 			return new Response('Not Found', { status: 404 });
 		}
@@ -633,7 +644,7 @@ async function handleNoteDetail(request, noteId, env) {
 			if (typeof existingNote.files === 'string') {
 				existingNote.files = JSON.parse(existingNote.files);
 			}
-		} catch(e) {
+		} catch (e) {
 			existingNote.files = [];
 		}
 
@@ -665,7 +676,7 @@ async function handleNoteDetail(request, noteId, env) {
 							await env.NOTES_R2_BUCKET.delete(allR2Keys);
 						}
 						// 2. 从数据库删除笔记
-						await db.prepare("DELETE FROM notes WHERE id = ?").bind(id).run();
+						await db.prepare('DELETE FROM notes WHERE id = ?').bind(id).run();
 						// 3. 返回特殊标记，告知前端整个笔记已被删除
 						return jsonResponse({ success: true, noteDeleted: true });
 					}
@@ -685,7 +696,7 @@ async function handleNoteDetail(request, noteId, env) {
 					const newTimestamp = shouldUpdateTimestamp ? Date.now() : existingNote.updated_at;
 					// 在 UPDATE 语句中加入 pics 字段的更新
 					const stmt = db.prepare(
-						"UPDATE notes SET content = ?, files = ?, updated_at = ?, pics = ? WHERE id = ?"
+						'UPDATE notes SET content = ?, files = ?, updated_at = ?, pics = ? WHERE id = ?'
 					);
 					await stmt.bind(content, JSON.stringify(currentFiles), newTimestamp, picUrls, id).run();
 					await processNoteTags(db, id, content);
@@ -693,21 +704,21 @@ async function handleNoteDetail(request, noteId, env) {
 
 				if (formData.has('isPinned')) { // --- 这是置顶状态的更新 ---
 					const isPinned = formData.get('isPinned') === 'true' ? 1 : 0;
-					const stmt = db.prepare("UPDATE notes SET is_pinned = ? WHERE id = ?");
+					const stmt = db.prepare('UPDATE notes SET is_pinned = ? WHERE id = ?');
 					await stmt.bind(isPinned, id).run();
 				}
 				if (formData.has('isFavorited')) {
 					const isFavorited = formData.get('isFavorited') === 'true' ? 1 : 0;
-					const stmt = db.prepare("UPDATE notes SET is_favorited = ? WHERE id = ?");
+					const stmt = db.prepare('UPDATE notes SET is_favorited = ? WHERE id = ?');
 					await stmt.bind(isFavorited, id).run();
 				}
 				if (formData.has('is_archived')) {
 					const isArchived = formData.get('is_archived') === 'true' ? 1 : 0;
-					const stmt = db.prepare("UPDATE notes SET is_archived = ? WHERE id = ?");
+					const stmt = db.prepare('UPDATE notes SET is_archived = ? WHERE id = ?');
 					await stmt.bind(isArchived, id).run();
 				}
 
-				const updatedNote = await db.prepare("SELECT * FROM notes WHERE id = ?").bind(id).first();
+				const updatedNote = await db.prepare('SELECT * FROM notes WHERE id = ?').bind(id).first();
 				if (typeof updatedNote.files === 'string') {
 					updatedNote.files = JSON.parse(updatedNote.files);
 				}
@@ -725,7 +736,10 @@ async function handleNoteDetail(request, noteId, env) {
 				}
 				let picUrls = [];
 				if (typeof existingNote.pics === 'string') {
-					try { picUrls = JSON.parse(existingNote.pics); } catch (e) { }
+					try {
+						picUrls = JSON.parse(existingNote.pics);
+					} catch (e) {
+					}
 				}
 
 				if (picUrls.length > 0) {
@@ -748,13 +762,13 @@ async function handleNoteDetail(request, noteId, env) {
 					await env.NOTES_R2_BUCKET.delete(allR2KeysToDelete);
 				}
 
-				await db.prepare("DELETE FROM notes WHERE id = ?").bind(id).run();
+				await db.prepare('DELETE FROM notes WHERE id = ?').bind(id).run();
 
 				return new Response(null, { status: 204 });
 			}
 		}
 	} catch (e) {
-		console.error("D1 Error:", e.message, e.cause);
+		console.error('D1 Error:', e.message, e.cause);
 		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
 	}
 }
@@ -767,7 +781,7 @@ async function handleFileRequest(noteId, fileId, request, env) {
 	}
 
 	// 尝试从数据库获取元数据
-	const note = await db.prepare("SELECT files FROM notes WHERE id = ?").bind(id).first();
+	const note = await db.prepare('SELECT files FROM notes WHERE id = ?').bind(id).first();
 
 	// 【核心修改】即使 note 不存在或 files 为空，我们也不立即返回 404，
 	// 因为图片可能只记录在 pics 字段中。
@@ -821,6 +835,7 @@ async function handleFileRequest(noteId, fileId, request, env) {
 
 	return new Response(object.body, { headers });
 }
+
 /**
  *  将 Telegram 的格式化实体 (entities) 转换为 Markdown 文本
  *
@@ -851,19 +866,39 @@ function telegramEntitiesToMarkdown(text, entities = []) {
 		const priority = tagPriority[type] || 100;
 		let startTag = '', endTag = '';
 		switch (type) {
-			case 'bold':          startTag = '**'; endTag = '**'; break;
-			case 'italic':        startTag = '_';  endTag = '_';  break;
-			case 'underline':     startTag = '__'; endTag = '__'; break;
-			case 'strikethrough': startTag = '~~'; endTag = '~~'; break;
-			case 'spoiler':       startTag = '||'; endTag = '||'; break;
-			case 'code':          startTag = '`';  endTag = '`';  break;
+			case 'bold':
+				startTag = '**';
+				endTag = '**';
+				break;
+			case 'italic':
+				startTag = '_';
+				endTag = '_';
+				break;
+			case 'underline':
+				startTag = '__';
+				endTag = '__';
+				break;
+			case 'strikethrough':
+				startTag = '~~';
+				endTag = '~~';
+				break;
+			case 'spoiler':
+				startTag = '||';
+				endTag = '||';
+				break;
+			case 'code':
+				startTag = '`';
+				endTag = '`';
+				break;
 			case 'text_link':
 				startTag = '[';
 				const encodedUrl = url.replace(/\(/g, '%28').replace(/\)/g, '%29');
 				endTag = `](${encodedUrl})`;
 				break;
 			case 'pre':
-				startTag = `\`\`\`${language || ''}\n`; endTag = '\n```'; break;
+				startTag = `\`\`\`${language || ''}\n`;
+				endTag = '\n```';
+				break;
 		}
 
 		if (startTag) {
@@ -932,7 +967,7 @@ async function handleTelegramProxy(request, env) {
 	const botToken = env.TELEGRAM_BOT_TOKEN;
 
 	if (!botToken) {
-		console.error("TELEGRAM_BOT_TOKEN secret is not set.");
+		console.error('TELEGRAM_BOT_TOKEN secret is not set.');
 		return new Response('Bot not configured', { status: 500 });
 	}
 
@@ -968,7 +1003,7 @@ async function handleTelegramProxy(request, env) {
 		});
 
 	} catch (e) {
-		console.error("Telegram Proxy Error:", e.message);
+		console.error('Telegram Proxy Error:', e.message);
 		return new Response('Failed to proxy Telegram media', { status: 500 });
 	}
 }
@@ -993,7 +1028,7 @@ async function handleTelegramWebhook(request, env, secret) {
 
 		const authorizedIdsStr = env.AUTHORIZED_TELEGRAM_IDS;
 		if (!authorizedIdsStr) {
-			console.error("安全警告：AUTHORIZED_TELEGRAM_IDS 环境变量未设置。");
+			console.error('安全警告：AUTHORIZED_TELEGRAM_IDS 环境变量未设置。');
 			return new Response('OK', { status: 200 });
 		}
 		chatId = message.chat.id;
@@ -1006,7 +1041,7 @@ async function handleTelegramWebhook(request, env, secret) {
 		const db = env.DB;
 		const bucket = env.NOTES_R2_BUCKET;
 		if (!botToken) {
-			console.error("TELEGRAM_BOT_TOKEN secret is not set.");
+			console.error('TELEGRAM_BOT_TOKEN secret is not set.');
 			return new Response('Bot not configured', { status: 500 });
 		}
 
@@ -1060,38 +1095,44 @@ async function handleTelegramWebhook(request, env, secret) {
 		let videoObjects = [];
 		let mediaEmbeds = [];
 
-		const insertStmt = db.prepare("INSERT INTO notes (content, files, is_pinned, created_at, updated_at, pics, videos) VALUES (?, ?, 0, ?, ?, ?, ?) RETURNING id");
+		const insertStmt = db.prepare('INSERT INTO notes (content, files, is_pinned, created_at, updated_at, pics, videos) VALUES (?, ?, 0, ?, ?, ?, ?) RETURNING id');
 		const { id: noteId } = await insertStmt.bind('', '[]', now, now, '[]', '[]').first();
 		if (!noteId) {
-			throw new Error("无法在数据库中创建笔记记录。");
+			throw new Error('无法在数据库中创建笔记记录。');
 		}
 
 		// 图片处理（保持二次上传）
 		if (photo) {
-			const getFileUrl = `https://api.telegram.org/bot${botToken}/getFile?file_id=${photo.file_id}`;
-			const fileInfoRes = await fetch(getFileUrl);
-			const fileInfo = await fileInfoRes.json();
-			if (!fileInfo.ok) throw new Error(`Telegram getFile API 错误 (photo): ${fileInfo.description}`);
-			const filePath = fileInfo.result.file_path;
-			const fileName = `photo_${message.message_id}.${(filePath.split('.').pop() || 'jpg')}`;
-			const downloadUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
-			const fileRes = await fetch(downloadUrl);
-			if (!fileRes.ok) throw new Error("从 Telegram 下载图片失败。");
-			const fileId = crypto.randomUUID();
+			if (settings.telegramProxy) {
+				// --- 代理模式 ---
+				const proxyUrl = `/api/tg-media-proxy/${photo.file_id}`;
+				picObjects.push(proxyUrl);
+			} else {
+				const getFileUrl = `https://api.telegram.org/bot${botToken}/getFile?file_id=${photo.file_id}`;
+				const fileInfoRes = await fetch(getFileUrl);
+				const fileInfo = await fileInfoRes.json();
+				if (!fileInfo.ok) throw new Error(`Telegram getFile API 错误 (photo): ${fileInfo.description}`);
+				const filePath = fileInfo.result.file_path;
+				const fileName = `photo_${message.message_id}.${(filePath.split('.').pop() || 'jpg')}`;
+				const downloadUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
+				const fileRes = await fetch(downloadUrl);
+				if (!fileRes.ok) throw new Error('从 Telegram 下载图片失败。');
+				const fileId = crypto.randomUUID();
 
-			// 使用流式传输方式上传到 R2
-			const readableStream = fileRes.body;
-			await bucket.put(`${noteId}/${fileId}`, readableStream, {
-				httpMetadata: { contentType: fileRes.headers.get('content-type') || 'image/jpeg' }
-			});
+				// 使用流式传输方式上传到 R2
+				const readableStream = fileRes.body;
+				await bucket.put(`${noteId}/${fileId}`, readableStream, {
+					httpMetadata: { contentType: fileRes.headers.get('content-type') || 'image/jpeg' }
+				});
 
-			const internalFileUrl = `/api/files/${noteId}/${fileId}`;
+				const internalFileUrl = `/api/files/${noteId}/${fileId}`;
 
-			picObjects.push(internalFileUrl); // 为了兼容性，图片直接存 URL 字符串
-			mediaEmbeds.push(`![${fileName}](${internalFileUrl})`);
+				picObjects.push(internalFileUrl); // 为了兼容性，图片直接存 URL 字符串
+				mediaEmbeds.push(`![${fileName}](${internalFileUrl})`);
+			}
 		}
 
-		if (imgUrl){
+		if (imgUrl) {
 			picObjects.push(imgUrl);
 			mediaEmbeds.push(`![](${imgUrl})`);
 		}
@@ -1101,7 +1142,7 @@ async function handleTelegramWebhook(request, env, secret) {
 				// --- 代理模式 ---
 				const proxyUrl = `/api/tg-media-proxy/${video.file_id}`;
 				videoObjects.push(proxyUrl);
-				mediaEmbeds.push(`<video src="${proxyUrl}" width="100%" controls muted></video>`);
+				mediaEmbeds.push(`<video src='${proxyUrl}' width='100%' controls muted></video>`);
 			} else {
 				// --- 二次上传模式 ---
 				const getFileUrl = `https://api.telegram.org/bot${botToken}/getFile?file_id=${video.file_id}`;
@@ -1110,7 +1151,7 @@ async function handleTelegramWebhook(request, env, secret) {
 				if (!fileInfo.ok) throw new Error(`Telegram getFile API 错误 (video): ${fileInfo.description}`);
 				const downloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.result.file_path}`;
 				const fileRes = await fetch(downloadUrl);
-				if (!fileRes.ok) throw new Error("从 Telegram 下载视频失败。");
+				if (!fileRes.ok) throw new Error('从 Telegram 下载视频失败。');
 				const fileId = crypto.randomUUID();
 
 				// 使用流式传输方式上传到 R2
@@ -1121,7 +1162,7 @@ async function handleTelegramWebhook(request, env, secret) {
 
 				const internalFileUrl = `/api/files/${noteId}/${fileId}`;
 				videoObjects.push(internalFileUrl);
-				mediaEmbeds.push(`<video src="${internalFileUrl}" width="100%" controls muted></video>`);
+				mediaEmbeds.push(`<video src='${internalFileUrl}' width='100%' controls muted></video>`);
 			}
 		}
 
@@ -1146,7 +1187,7 @@ async function handleTelegramWebhook(request, env, secret) {
 				if (!fileInfo.ok) throw new Error(`Telegram getFile API 错误 (document): ${fileInfo.description}`);
 				const downloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.result.file_path}`;
 				const fileRes = await fetch(downloadUrl);
-				if (!fileRes.ok) throw new Error("从 Telegram 下载文件失败。");
+				if (!fileRes.ok) throw new Error('从 Telegram 下载文件失败。');
 				const fileId = crypto.randomUUID();
 
 				// 使用流式传输方式上传到 R2
@@ -1172,7 +1213,7 @@ async function handleTelegramWebhook(request, env, secret) {
 
 		let finalContent = contentParts.join('\n\n');
 
-		const updateStmt = db.prepare("UPDATE notes SET content = ?, files = ?, pics = ?, videos = ?,is_archived = ? WHERE id = ?");
+		const updateStmt = db.prepare('UPDATE notes SET content = ?, files = ?, pics = ?, videos = ?,is_archived = ? WHERE id = ?');
 		await updateStmt.bind(
 			finalContent,
 			JSON.stringify(filesMeta),
@@ -1186,13 +1227,14 @@ async function handleTelegramWebhook(request, env, secret) {
 		await sendTelegramMessage(chatId, `✅ 笔记已保存！ (ID: ${noteId})`, botToken);
 
 	} catch (e) {
-		console.error("Telegram Webhook Error:", e.message);
+		console.error('Telegram Webhook Error:', e.message);
 		if (chatId && botToken) {
 			await sendTelegramMessage(chatId, `❌ 保存笔记时出错: ${e.message}`, botToken);
 		}
 	}
 	return new Response('OK', { status: 200 });
 }
+
 /**
  * 发送消息到指定的 Telegram 聊天
  * @param {string | number} chatId 聊天 ID
@@ -1243,6 +1285,7 @@ function extractImageUrls(content) {
 	// 返回一个 JSON 字符串数组，以便直接存入 D1 的 TEXT 字段
 	return JSON.stringify(urls);
 }
+
 /**
  * 处理笔记的标签逻辑，过滤掉 URL 中的 #
  */
@@ -1270,15 +1313,15 @@ async function processNoteTags(db, noteId, content) {
 	const uniqueTags = [...new Set(allTags)];
 
 	const statements = [];
-	statements.push(db.prepare("DELETE FROM note_tags WHERE note_id = ?").bind(noteId));
+	statements.push(db.prepare('DELETE FROM note_tags WHERE note_id = ?').bind(noteId));
 
 	if (uniqueTags.length > 0) {
 		for (const tagName of uniqueTags) {
-			await db.prepare("INSERT OR IGNORE INTO tags (name) VALUES (?)").bind(tagName).run();
-			const tag = await db.prepare("SELECT id FROM tags WHERE name = ?").bind(tagName).first();
+			await db.prepare('INSERT OR IGNORE INTO tags (name) VALUES (?)').bind(tagName).run();
+			const tag = await db.prepare('SELECT id FROM tags WHERE name = ?').bind(tagName).first();
 			if (tag) {
 				statements.push(
-					db.prepare("INSERT OR IGNORE INTO note_tags (note_id, tag_id) VALUES (?, ?)")
+					db.prepare('INSERT OR IGNORE INTO note_tags (note_id, tag_id) VALUES (?, ?)')
 						.bind(noteId, tag.id)
 				);
 			}
@@ -1288,6 +1331,7 @@ async function processNoteTags(db, noteId, content) {
 		await db.batch(statements);
 	}
 }
+
 /**
  * 处理独立的图片上传请求 (从粘贴操作)
  * 将图片存入 R2 的一个通用 'uploads' 文件夹中
@@ -1307,7 +1351,7 @@ async function handleStandaloneImageUpload(request, env) {
 
 		// 将文件流上传到 R2
 		await env.NOTES_R2_BUCKET.put(r2Key, file.stream(), {
-			httpMetadata: { contentType: file.type },
+			httpMetadata: { contentType: file.type }
 		});
 
 		// 返回一个可用于访问此图片的内部 URL
@@ -1316,7 +1360,7 @@ async function handleStandaloneImageUpload(request, env) {
 		return jsonResponse({ success: true, url: imageUrl });
 
 	} catch (e) {
-		console.error("Standalone Image Upload Error:", e.message);
+		console.error('Standalone Image Upload Error:', e.message);
 		return jsonResponse({ error: 'Upload failed', message: e.message }, 500);
 	}
 }
@@ -1341,9 +1385,9 @@ async function handleImgurProxyUpload(request, env) {
 		const imgurResponse = await fetch('https://api.imgur.com/3/image', {
 			method: 'POST',
 			headers: {
-				'Authorization': `Client-ID ${clientId}`,
+				'Authorization': `Client-ID ${clientId}`
 			},
-			body: imgurFormData,
+			body: imgurFormData
 		});
 
 		if (!imgurResponse.ok) {
@@ -1360,7 +1404,7 @@ async function handleImgurProxyUpload(request, env) {
 		return jsonResponse({ success: true, url: result.data.link });
 
 	} catch (e) {
-		console.error("Imgur Proxy Error:", e.message);
+		console.error('Imgur Proxy Error:', e.message);
 		return jsonResponse({ error: 'Imgur upload failed via proxy', message: e.message }, 500);
 	}
 }
@@ -1375,35 +1419,50 @@ async function handleGetAllAttachments(request, env) {
 	try {
 		// 使用 Common Table Expression (CTE) 和 UNION ALL 来构建一个高效的单一查询
 		const query = `
-            WITH combined_attachments AS (
-                SELECT
-                    n.id AS noteId, n.updated_at AS timestamp, 'image' AS type,
-                    json_each.value AS url, NULL AS name, NULL AS size, NULL AS id
-                FROM notes n, json_each(n.pics) AS json_each
-                WHERE json_valid(n.pics) AND json_array_length(n.pics) > 0
+	  WITH combined_attachments AS (SELECT n.id            AS noteId,
+										   n.updated_at    AS timestamp,
+										   'image'         AS type,
+										   json_each.value AS url,
+										   NULL            AS name,
+										   NULL            AS size,
+										   NULL            AS id
+									FROM notes n,
+										 json_each(n.pics) AS json_each
+									WHERE json_valid(n.pics)
+									  AND json_array_length(n.pics) > 0
 
-                UNION ALL
+									UNION ALL
 
-                SELECT
-                    n.id AS noteId, n.updated_at AS timestamp, 'video' AS type,
-                    json_each.value AS url, NULL AS name, NULL AS size, NULL AS id
-                FROM notes n, json_each(n.videos) AS json_each
-                WHERE json_valid(n.videos) AND json_array_length(n.videos) > 0
+									SELECT n.id            AS noteId,
+										   n.updated_at    AS timestamp,
+										   'video'         AS type,
+										   json_each.value AS url,
+										   NULL            AS name,
+										   NULL            AS size,
+										   NULL            AS id
+									FROM notes n,
+										 json_each(n.videos) AS json_each
+									WHERE json_valid(n.videos)
+									  AND json_array_length(n.videos) > 0
 
-                UNION ALL
+									UNION ALL
 
-                SELECT
-                    n.id AS noteId, n.updated_at AS timestamp, 'file' AS type,
-                    NULL AS url, json_extract(json_each.value, '$.name') AS name,
-                    json_extract(json_each.value, '$.size') AS size,
-                    json_extract(json_each.value, '$.id') AS id
-                FROM notes n, json_each(n.files) AS json_each
-                WHERE json_valid(n.files) AND json_array_length(n.files) > 0
-            )
-            SELECT * FROM combined_attachments
-            ORDER BY timestamp DESC
-            LIMIT ? OFFSET ?;
-        `;
+									SELECT n.id                                    AS noteId,
+										   n.updated_at                            AS timestamp,
+										   'file'                                  AS type,
+										   NULL                                    AS url,
+										   json_extract(json_each.value, '$.name') AS name,
+										   json_extract(json_each.value, '$.size') AS size,
+										   json_extract(json_each.value, '$.id')   AS id
+									FROM notes n,
+										 json_each(n.files) AS json_each
+									WHERE json_valid(n.files)
+									  AND json_array_length(n.files) > 0)
+	  SELECT *
+	  FROM combined_attachments
+	  ORDER BY timestamp DESC
+	  LIMIT ? OFFSET ?;
+		`;
 
 		// 为了判断是否有更多页面，我们请求 limit + 1 条记录
 		const stmt = db.prepare(query);
@@ -1418,7 +1477,7 @@ async function handleGetAllAttachments(request, env) {
 		});
 
 	} catch (e) {
-		console.error("Get All Attachments Error:", e.message);
+		console.error('Get All Attachments Error:', e.message);
 		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
 	}
 }
@@ -1472,12 +1531,12 @@ function buildTree(nodes, parentId = null) {
  */
 async function handleDocsTree(request, env) {
 	try {
-		const stmt = env.DB.prepare("SELECT id, type, title, parent_id FROM nodes ORDER BY title ASC");
+		const stmt = env.DB.prepare('SELECT id, type, title, parent_id FROM nodes ORDER BY title ASC');
 		const { results } = await stmt.all();
 		const tree = buildTree(results, null);
 		return jsonResponse(tree);
 	} catch (e) {
-		console.error("Docs Tree Error:", e.message);
+		console.error('Docs Tree Error:', e.message);
 		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
 	}
 }
@@ -1487,7 +1546,7 @@ async function handleDocsTree(request, env) {
  */
 async function handleDocsNodeGet(request, nodeId, env) {
 	try {
-		const stmt = env.DB.prepare("SELECT id, type, title, content FROM nodes WHERE id = ?");
+		const stmt = env.DB.prepare('SELECT id, type, title, content FROM nodes WHERE id = ?');
 		const node = await stmt.bind(nodeId).first();
 		if (!node) {
 			return jsonResponse({ error: 'Not Found' }, 404);
@@ -1506,7 +1565,7 @@ async function handleDocsNodeUpdate(request, nodeId, env) {
 	try {
 		const { content } = await request.json();
 		const now = Date.now();
-		const stmt = env.DB.prepare("UPDATE nodes SET content = ?, updated_at = ? WHERE id = ?");
+		const stmt = env.DB.prepare('UPDATE nodes SET content = ?, updated_at = ? WHERE id = ?');
 		await stmt.bind(content, now, nodeId).run();
 		return jsonResponse({ success: true, id: nodeId });
 	} catch (e) {
@@ -1532,17 +1591,17 @@ async function handleDocsNodeCreate(request, env) {
 			content: type === 'file' ? `# ${title}` : null,
 			parent_id,
 			created_at: Date.now(),
-			updated_at: Date.now(),
+			updated_at: Date.now()
 		};
 
 		const stmt = env.DB.prepare(
-			"INSERT INTO nodes (id, type, title, content, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+			'INSERT INTO nodes (id, type, title, content, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
 		);
 		await stmt.bind(...Object.values(newNode)).run();
 
 		return jsonResponse(newNode, 201);
 	} catch (e) {
-		console.error("Docs Create Node Error:", e.message);
+		console.error('Docs Create Node Error:', e.message);
 		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
 	}
 }
@@ -1558,7 +1617,7 @@ async function getAllDescendantIds(db, parentId) {
 	let queue = [parentId];
 	while (queue.length > 0) {
 		const currentId = queue.shift();
-		const { results: children } = await db.prepare("SELECT id FROM nodes WHERE parent_id = ?").bind(currentId).all();
+		const { results: children } = await db.prepare('SELECT id FROM nodes WHERE parent_id = ?').bind(currentId).all();
 		if (children && children.length > 0) {
 			const childIds = children.map(c => c.id);
 			allIds.push(...childIds);
@@ -1577,13 +1636,13 @@ async function getAllDescendantIds(db, parentId) {
 async function handleDocsNodeDelete(request, nodeId, env) {
 	const db = env.DB;
 	try {
-		const nodeToDelete = await db.prepare("SELECT id FROM nodes WHERE id = ?").bind(nodeId).first();
+		const nodeToDelete = await db.prepare('SELECT id FROM nodes WHERE id = ?').bind(nodeId).first();
 		if (!nodeToDelete) {
-			return jsonResponse({ error: "节点未找到。" }, 404);
+			return jsonResponse({ error: '节点未找到。' }, 404);
 		}
 
 		// 只需要删除这一个节点，数据库会自动删除所有子孙节点。
-		await db.prepare("DELETE FROM nodes WHERE id = ?").bind(nodeId).run();
+		await db.prepare('DELETE FROM nodes WHERE id = ?').bind(nodeId).run();
 
 		// 我们不再需要返回所有被删除的子节点ID，因为前端逻辑也不依赖它。
 		return jsonResponse({ success: true, deletedIds: [nodeId] });
@@ -1598,36 +1657,36 @@ async function handleDocsNodeMove(request, nodeId, env) {
 	const db = env.DB;
 	try {
 		const { new_parent_id } = await request.json();
-		const nodeToMove = await db.prepare("SELECT * FROM nodes WHERE id = ?").bind(nodeId).first();
+		const nodeToMove = await db.prepare('SELECT * FROM nodes WHERE id = ?').bind(nodeId).first();
 
 		// --- Validation ---
 		if (!nodeToMove) {
-			return jsonResponse({ error: "The node you are trying to move does not exist." }, 404);
+			return jsonResponse({ error: 'The node you are trying to move does not exist.' }, 404);
 		}
 		if (nodeId === new_parent_id) {
-			return jsonResponse({ error: "Cannot move a node into itself." }, 400);
+			return jsonResponse({ error: 'Cannot move a node into itself.' }, 400);
 		}
 		if (nodeToMove.parent_id === new_parent_id) {
-			return jsonResponse({ success: true, message: "Node is already in the target location." }); // No-op
+			return jsonResponse({ success: true, message: 'Node is already in the target location.' }); // No-op
 		}
 
 		if (new_parent_id !== null) {
-			const parentNode = await db.prepare("SELECT type FROM nodes WHERE id = ?").bind(new_parent_id).first();
+			const parentNode = await db.prepare('SELECT type FROM nodes WHERE id = ?').bind(new_parent_id).first();
 			if (!parentNode) {
-				return jsonResponse({ error: "Target destination does not exist." }, 404);
+				return jsonResponse({ error: 'Target destination does not exist.' }, 404);
 			}
 			if (parentNode.type !== 'folder') {
-				return jsonResponse({ error: "Target destination must be a folder." }, 400);
+				return jsonResponse({ error: 'Target destination must be a folder.' }, 400);
 			}
 		}
 
 		let currentParentId = new_parent_id;
 		while (currentParentId !== null) {
 			if (currentParentId === nodeId) {
-				return jsonResponse({ error: "Cannot move a folder into one of its own descendants." }, 400);
+				return jsonResponse({ error: 'Cannot move a folder into one of its own descendants.' }, 400);
 			}
 			// CRITICAL FIX: Check if the parent exists before trying to read its properties
-			const parent = await db.prepare("SELECT parent_id FROM nodes WHERE id = ?").bind(currentParentId).first();
+			const parent = await db.prepare('SELECT parent_id FROM nodes WHERE id = ?').bind(currentParentId).first();
 			if (!parent) {
 				// This prevents a crash if the chain is broken
 				break;
@@ -1636,7 +1695,7 @@ async function handleDocsNodeMove(request, nodeId, env) {
 		}
 
 		// --- Update the node ---
-		const stmt = db.prepare("UPDATE nodes SET parent_id = ?, updated_at = ? WHERE id = ?");
+		const stmt = db.prepare('UPDATE nodes SET parent_id = ?, updated_at = ? WHERE id = ?');
 		await stmt.bind(new_parent_id, Date.now(), nodeId).run();
 
 		return jsonResponse({ success: true });
@@ -1656,10 +1715,10 @@ async function handleDocsNodeRename(request, nodeId, env) {
 
 		// 验证 new_title 是否存在且不为空
 		if (!new_title || typeof new_title !== 'string' || new_title.trim() === '') {
-			return jsonResponse({ error: "A valid new title is required." }, 400);
+			return jsonResponse({ error: 'A valid new title is required.' }, 400);
 		}
 
-		const stmt = db.prepare("UPDATE nodes SET title = ?, updated_at = ? WHERE id = ?");
+		const stmt = db.prepare('UPDATE nodes SET title = ?, updated_at = ? WHERE id = ?');
 		await stmt.bind(new_title.trim(), Date.now(), nodeId).run();
 
 		return jsonResponse({ success: true, new_title: new_title.trim() });
@@ -1681,7 +1740,7 @@ async function handleShareFileRequest(noteId, fileId, request, env) {
 	}
 
 	try {
-		const note = await db.prepare("SELECT files FROM notes WHERE id = ?").bind(id).first();
+		const note = await db.prepare('SELECT files FROM notes WHERE id = ?').bind(id).first();
 		if (!note) {
 			return jsonResponse({ error: 'Note not found' }, 404);
 		}
@@ -1691,7 +1750,8 @@ async function handleShareFileRequest(noteId, fileId, request, env) {
 			if (typeof note.files === 'string') {
 				files = JSON.parse(note.files);
 			}
-		} catch(e) { /* ignore */ }
+		} catch (e) { /* ignore */
+		}
 
 		const fileIndex = files.findIndex(f => f.id === fileId);
 		if (fileIndex === -1) {
@@ -1713,7 +1773,7 @@ async function handleShareFileRequest(noteId, fileId, request, env) {
 
 			// 2. 将 public_id 持久化到 D1 数据库中
 			files[fileIndex].public_id = publicId;
-			await db.prepare("UPDATE notes SET files = ? WHERE id = ?").bind(JSON.stringify(files), id).run();
+			await db.prepare('UPDATE notes SET files = ? WHERE id = ?').bind(JSON.stringify(files), id).run();
 		}
 
 		const { protocol, host } = new URL(request.url);
@@ -1868,6 +1928,7 @@ async function handleUnshareNoteRequest(noteId, env) {
 		return jsonResponse({ error: 'Database error while revoking link' }, 500);
 	}
 }
+
 /**
  * 处理对单个分享 Memos 内容的请求
  * GET /api/public/note/:publicId
@@ -1881,7 +1942,7 @@ async function handlePublicNoteRequest(publicId, env) {
 	const noteId = kvData.noteId;
 
 	try {
-		const note = await env.DB.prepare("SELECT id, content, updated_at, files FROM notes WHERE id = ?").bind(noteId).first();
+		const note = await env.DB.prepare('SELECT id, content, updated_at, files FROM notes WHERE id = ?').bind(noteId).first();
 		if (!note) {
 			return jsonResponse({ error: 'Shared note content not found' }, 404);
 		}
@@ -1921,7 +1982,10 @@ async function handlePublicNoteRequest(publicId, env) {
 		// 2. 处理 `files` 附件列表
 		let files = [];
 		if (typeof note.files === 'string') {
-			try { files = JSON.parse(note.files); } catch (e) { /* an empty array is fine */ }
+			try {
+				files = JSON.parse(note.files);
+			} catch (e) { /* an empty array is fine */
+			}
 		}
 		for (const file of files) {
 			if (file.id) { // 只处理有 id 的内部文件
@@ -1968,7 +2032,7 @@ async function handlePublicRawNoteRequest(publicId, env) {
 
 	try {
 		// 2. 使用获取到的 noteId 从 D1 查询笔记内容
-		const note = await env.DB.prepare("SELECT content FROM notes WHERE id = ?").bind(kvData.noteId).first();
+		const note = await env.DB.prepare('SELECT content FROM notes WHERE id = ?').bind(kvData.noteId).first();
 		if (!note) {
 			return new Response('Not Found', { status: 404 });
 		}
@@ -1995,8 +2059,8 @@ async function handleMergeNotes(request, env) {
 		}
 
 		const [sourceNote, targetNote] = await Promise.all([
-			db.prepare("SELECT * FROM notes WHERE id = ?").bind(sourceNoteId).first(),
-			db.prepare("SELECT * FROM notes WHERE id = ?").bind(targetNoteId).first(),
+			db.prepare('SELECT * FROM notes WHERE id = ?').bind(sourceNoteId).first(),
+			db.prepare('SELECT * FROM notes WHERE id = ?').bind(targetNoteId).first()
 		]);
 
 		if (!sourceNote || !targetNote) {
@@ -2016,7 +2080,7 @@ async function handleMergeNotes(request, env) {
 
 		// 更新目标笔记
 		const stmt = db.prepare(
-			"UPDATE notes SET content = ?, files = ?, updated_at = ? WHERE id = ?"
+			'UPDATE notes SET content = ?, files = ?, updated_at = ? WHERE id = ?'
 		);
 		await stmt.bind(mergedContent, mergedFiles, mergedTimestamp, targetNote.id).run();
 
@@ -2024,7 +2088,7 @@ async function handleMergeNotes(request, env) {
 		await processNoteTags(db, targetNote.id, mergedContent);
 
 		// 删除源笔记
-		await db.prepare("DELETE FROM notes WHERE id = ?").bind(sourceNote.id).run();
+		await db.prepare('DELETE FROM notes WHERE id = ?').bind(sourceNote.id).run();
 
 		// 将源笔记的文件移动到目标笔记的 R2 目录下
 		if (sourceFiles.length > 0) {
@@ -2044,7 +2108,7 @@ async function handleMergeNotes(request, env) {
 		}
 
 		// 返回更新后的目标笔记
-		const updatedMergedNote = await db.prepare("SELECT * FROM notes WHERE id = ?").bind(targetNote.id).first();
+		const updatedMergedNote = await db.prepare('SELECT * FROM notes WHERE id = ?').bind(targetNote.id).first();
 		if (typeof updatedMergedNote.files === 'string') {
 			updatedMergedNote.files = JSON.parse(updatedMergedNote.files);
 		}
@@ -2052,7 +2116,7 @@ async function handleMergeNotes(request, env) {
 		return jsonResponse(updatedMergedNote);
 
 	} catch (e) {
-		console.error("Merge Notes Error:", e.message, e.cause);
+		console.error('Merge Notes Error:', e.message, e.cause);
 		return jsonResponse({ error: 'Database or R2 error during merge', message: e.message }, 500);
 	}
 }
