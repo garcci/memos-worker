@@ -20,9 +20,4 @@ id = "e66f0f3bfd9649959de3665e432fa6c9"
 binding = "NOTES_R2_BUCKET"
 bucket_name = "notes-r2-bucket"
 
-[observability]
-[observability.logs]
-enabled = true
-head_sampling_rate = 1
-invocation_logs = true
-persist = true
+
