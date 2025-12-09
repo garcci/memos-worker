@@ -1182,8 +1182,8 @@ async function handleTelegramWebhook(request, env, secret) {
 					// --- 代理模式 ---
 					// 注意：代理文件时，我们无法在笔记中直接展示它，只能存一个元信息
 					filesMeta.push({
+						id: document.file_id,
 						type: 'telegram_document', // 特殊类型
-						file_id: document.file_id,
 						name: document.file_name,
 						size: document.file_size
 					});
@@ -1237,7 +1237,6 @@ async function handleTelegramWebhook(request, env, secret) {
 
 		await processNoteTags(db, noteId, finalContent);
 		await sendTelegramMessage(chatId, `✅ 笔记已保存！ (ID: ${noteId})`, botToken);
-		await sendTelegramMessage(chatId, `✅ 笔记已保存！ (update: ${update})`, botToken);
 
 	} catch (e) {
 		console.error('Telegram Webhook Error:', e.message);
