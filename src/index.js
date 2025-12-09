@@ -801,7 +801,10 @@ async function handleFileRequest(noteId, fileId, request, env) {
 	let object;
 	if (fileMeta && fileMeta.type === 'telegram_document') {
 		// 对于 Telegram 文档，通过代理获取
-		const response = await fetch(`/api/tg-media-proxy/${fileId}`);
+		const response = await fetch(new URL(`/api/tg-media-proxy/${fileId}`, request.url).toString());
+		if (!response.ok) {
+			return new Response('Failed to fetch Telegram document', { status: response.status });
+		}
 		object = await response.blob();
 	} else {
 		// 从 R2 存储获取文件
