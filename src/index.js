@@ -811,9 +811,8 @@ async function handleFileRequest(noteId, fileId, request, env) {
 			return new Response(`Failed to fetch Telegram document: ${response.status} ${response.statusText}`, { status: response.status });
 		}
 		
-		// 从响应中获取数据
-		const blob = await response.blob();
-		object = blob;
+		// 直接返回代理响应，因为它已经是流式传输的
+		return response;
 	} else {
 		// 从 R2 存储获取文件
 		object = await env.NOTES_R2_BUCKET.get(`${id}/${fileId}`);
