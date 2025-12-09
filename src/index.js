@@ -806,11 +806,11 @@ async function handleFileRequest(noteId, fileId, request, env) {
 			headers: request.headers
 		});
 		const response = await handleTelegramProxy(proxyRequest, env);
-		
+
 		if (!response.ok) {
 			return new Response(`Failed to fetch Telegram document: ${response.status} ${response.statusText}`, { status: response.status });
 		}
-		
+
 		// 直接返回代理响应，因为它已经是流式传输的
 		return response;
 	} else {
@@ -1013,6 +1013,17 @@ async function handleTelegramProxy(request, env) {
 		// 4. 创建一个新的响应，传递上游响应的body和headers
 		const responseHeaders = new Headers(upstreamResponse.headers);
 		responseHeaders.set('Cache-Control', 'public, max-age=86400, immutable');
+
+		// 确保Content-Type被正确设置，如果上游没有提供则设为application/octet-stream
+		if (!responseHeaders.has('Content-Type')) {
+			responseHeaders.set('Content-Type', 'application/octet-stream');
+		}
+
+		// 添加Content-Disposition头以确保浏览器能正确识别文件名
+		const fileName = fileInfo.result.file_path.split('/').pop();
+		if (fileName) {
+			responseHeaders.set('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
+		}
 
 		return new Response(upstreamResponse.body, {
 			status: upstreamResponse.status,
