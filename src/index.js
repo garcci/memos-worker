@@ -1,9 +1,30 @@
 const NOTES_PER_PAGE = 10;
 const SESSION_DURATION_SECONDS = 30 * 86400; // Session 有效期: 30 天
 const SESSION_COOKIE = '__session';
+// 使用现代 Worker 导出语法
 export default {
 	async fetch(request, env, ctx) {
-		return await handleApiRequest(request, env);
+		// 添加 CORS 头部支持
+		const origin = request.headers.get('Origin');
+		
+		// 处理预检请求
+		if (request.method === 'OPTIONS') {
+			const headers = new Headers();
+			headers.set('Access-Control-Allow-Origin', origin ?? '*');
+			headers.set('Access-Control-Allow-Methods', 'GET,HEAD,POST,PUT,DELETE,PATCH,OPTIONS');
+			headers.set('Access-Control-Allow-Headers', '*, Authorization, X-Requested-With, Content-Type');
+			headers.set('Access-Control-Max-Age', '86400');
+			return new Response(null, { headers });
+		}
+
+		const response = await handleApiRequest(request, env);
+		
+		// 添加 CORS 头部到实际响应
+		if (origin) {
+			response.headers.set('Access-Control-Allow-Origin', origin);
+		}
+		
+		return response;
 	}
 };
 
@@ -140,7 +161,7 @@ async function handleApiRequest(request, env) {
 	const imageMatch = pathname.match(/^\/api\/images\/([a-zA-Z0-9-]+)$/);
 	if (imageMatch) {
 		const imageId = imageMatch[1];
-		return handleServeStandaloneImage(imageId, env);
+		return handleServeStandaloneImage(imageId, env, request);
 	}
 	if (request.method === 'GET' && pathname === '/api/attachments') {
 		return handleGetAllAttachments(request, env);
@@ -780,6 +801,9 @@ async function handleFileRequest(noteId, fileId, request, env) {
 		return new Response('Invalid Note ID', { status: 400 });
 	}
 
+	// 检查 If-None-Match 头部以支持 ETag
+	const ifNoneMatch = request.headers.get('If-None-Match');
+
 	// 尝试从数据库获取元数据
 	const note = await db.prepare('SELECT files FROM notes WHERE id = ?').bind(id).first();
 
@@ -823,9 +847,15 @@ async function handleFileRequest(noteId, fileId, request, env) {
 		return new Response('File not found in storage', { status: 404 });
 	}
 
+	// 检查 ETag 以支持条件请求
+	const etag = object.httpEtag;
+	if (ifNoneMatch && ifNoneMatch === etag) {
+		return new Response(null, { status: 304 }); // Not Modified
+	}
+
 	const headers = new Headers();
 	object.writeHttpMetadata(headers); // 从 R2 对象中写入元数据（如 Content-Type）
-	headers.set('etag', object.httpEtag);
+	headers.set('etag', etag);
 	headers.set('Cache-Control', 'public, max-age=86400, immutable');
 
 	// 根据是否存在 fileMeta 来决定如何设置 headers
@@ -989,6 +1019,9 @@ async function handleTelegramProxy(request, env) {
 		return new Response('Bot not configured', { status: 500 });
 	}
 
+	// 检查 If-None-Match 头部以支持 ETag
+	const ifNoneMatch = request.headers.get('If-None-Match');
+
 	try {
 		// 1. 调用 getFile API
 		const getFileUrl = `https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`;
@@ -1013,6 +1046,16 @@ async function handleTelegramProxy(request, env) {
 		// 4. 创建一个新的响应，传递上游响应的body和headers
 		const responseHeaders = new Headers(upstreamResponse.headers);
 		responseHeaders.set('Cache-Control', 'public, max-age=31536000, immutable');
+
+		// 添加 ETag 支持
+		const etag = `"${fileId}_${upstreamResponse.headers.get('etag') || Date.now()}"`;
+		
+		// 如果 ETag 匹配，则返回 304 Not Modified
+		if (ifNoneMatch && ifNoneMatch === etag) {
+			return new Response(null, { status: 304 }); // Not Modified
+		}
+		
+		responseHeaders.set('ETag', etag);
 
 		// 根据文件扩展名设置 Content-Type
 		const filePath = fileInfo.result.file_path;
@@ -1557,7 +1600,7 @@ async function handleGetAllAttachments(request, env) {
  * @param {object} env The Worker environment/bindings.
  * @returns {Promise<Response>}
  */
-async function handleServeStandaloneImage(imageId, env) {
+async function handleServeStandaloneImage(imageId, env, request) {
 	const r2Key = `uploads/${imageId}`;
 	const object = await env.NOTES_R2_BUCKET.get(r2Key);
 
@@ -1565,9 +1608,18 @@ async function handleServeStandaloneImage(imageId, env) {
 		return new Response('File not found', { status: 404 });
 	}
 
+	// 检查 If-None-Match 头部以支持 ETag
+	const ifNoneMatch = request?.headers.get('If-None-Match');
+	const etag = object.httpEtag;
+	
+	// 如果 ETag 匹配，则返回 304 Not Modified
+	if (ifNoneMatch && ifNoneMatch === etag) {
+		return new Response(null, { status: 304 }); // Not Modified
+	}
+
 	const headers = new Headers();
 	object.writeHttpMetadata(headers);
-	headers.set('etag', object.httpEtag);
+	headers.set('etag', etag);
 	// 设置长时间的浏览器缓存，因为这些图片内容是不可变的
 	headers.set('Cache-Control', 'public, max-age=31536000, immutable');
 
@@ -1861,7 +1913,12 @@ async function handleShareFileRequest(noteId, fileId, request, env) {
  * 现在能同时处理笔记附件和独立上传的图片。
  */
 async function handlePublicFileRequest(publicId, request, env) {
-	const kvData = await env.NOTES_KV.get(`public_file:${publicId}`, 'json');
+	// 使用现代 Workers KV API
+	const kvData = await env.NOTES_KV.get(`public_file:${publicId}`, { type: 'json' });
+	
+	// 检查 If-None-Match 头部以支持 ETag
+	const ifNoneMatch = request.headers.get('If-None-Match');
+	
 	if (!kvData) {
 		return new Response('Public link not found or has expired.', { status: 404 });
 	}
@@ -1888,9 +1945,15 @@ async function handlePublicFileRequest(publicId, request, env) {
 		return new Response('File not found in storage', { status: 404 });
 	}
 
+	// 检查 ETag 以支持条件请求
+	const etag = object.httpEtag;
+	if (ifNoneMatch && ifNoneMatch === etag) {
+		return new Response(null, { status: 304 }); // Not Modified
+	}
+
 	const headers = new Headers();
 	object.writeHttpMetadata(headers);
-	headers.set('etag', object.httpEtag);
+	headers.set('etag', etag);
 	headers.set('Cache-Control', 'public, max-age=86400, immutable');
 
 	headers.set('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`);
@@ -2193,7 +2256,11 @@ async function handleMergeNotes(request, env) {
 /**
  * 统一的 JSON 响应函数
  */
+/**
+ * 统一的 JSON 响应函数
+ */
 function jsonResponse(data, status = 200, headers = new Headers()) {
 	headers.set('Content-Type', 'application/json');
-	return new Response(JSON.stringify(data, null, 2), { status, headers });
+	// 使用更紧凑的 JSON 格式以节省带宽
+	return new Response(JSON.stringify(data), { status, headers });
 }
