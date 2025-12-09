@@ -950,8 +950,22 @@ async function handleTelegramProxy(request, env) {
 		// 2. 构建临时的下载链接
 		const temporaryDownloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.result.file_path}`;
 
-		// 3. 返回 302 重定向
-		return Response.redirect(temporaryDownloadUrl, 302);
+		// 3. 流式代理请求而不是重定向
+		const upstreamResponse = await fetch(temporaryDownloadUrl);
+
+		if (!upstreamResponse.ok) {
+			return new Response('Failed to fetch media from Telegram', { status: 502 });
+		}
+
+		// 4. 创建一个新的响应，传递上游响应的body和headers
+		const responseHeaders = new Headers(upstreamResponse.headers);
+		responseHeaders.set('Cache-Control', 'public, max-age=86400, immutable');
+
+		return new Response(upstreamResponse.body, {
+			status: upstreamResponse.status,
+			statusText: upstreamResponse.statusText,
+			headers: responseHeaders
+		});
 
 	} catch (e) {
 		console.error("Telegram Proxy Error:", e.message);
@@ -1064,13 +1078,13 @@ async function handleTelegramWebhook(request, env, secret) {
 			const fileRes = await fetch(downloadUrl);
 			if (!fileRes.ok) throw new Error("从 Telegram 下载图片失败。");
 			const fileId = crypto.randomUUID();
-			
+
 			// 使用流式传输方式上传到 R2
 			const readableStream = fileRes.body;
 			await bucket.put(`${noteId}/${fileId}`, readableStream, {
 				httpMetadata: { contentType: fileRes.headers.get('content-type') || 'image/jpeg' }
 			});
-			
+
 			const internalFileUrl = `/api/files/${noteId}/${fileId}`;
 
 			picObjects.push(internalFileUrl); // 为了兼容性，图片直接存 URL 字符串
@@ -1098,13 +1112,13 @@ async function handleTelegramWebhook(request, env, secret) {
 				const fileRes = await fetch(downloadUrl);
 				if (!fileRes.ok) throw new Error("从 Telegram 下载视频失败。");
 				const fileId = crypto.randomUUID();
-				
+
 				// 使用流式传输方式上传到 R2
 				const readableStream = fileRes.body;
 				await bucket.put(`${noteId}/${fileId}`, readableStream, {
 					httpMetadata: { contentType: fileRes.headers.get('content-type') || 'video/mp4' }
 				});
-				
+
 				const internalFileUrl = `/api/files/${noteId}/${fileId}`;
 				videoObjects.push(internalFileUrl);
 				mediaEmbeds.push(`<video src="${internalFileUrl}" width="100%" controls muted></video>`);
@@ -1134,13 +1148,13 @@ async function handleTelegramWebhook(request, env, secret) {
 				const fileRes = await fetch(downloadUrl);
 				if (!fileRes.ok) throw new Error("从 Telegram 下载文件失败。");
 				const fileId = crypto.randomUUID();
-				
+
 				// 使用流式传输方式上传到 R2
 				const readableStream = fileRes.body;
 				await bucket.put(`${noteId}/${fileId}`, readableStream, {
 					httpMetadata: { contentType: fileRes.headers.get('content-type') || 'application/octet-stream' }
 				});
-				
+
 				filesMeta.push({
 					id: fileId,
 					name: document.file_name,
