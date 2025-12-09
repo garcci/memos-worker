@@ -796,6 +796,12 @@ async function handleFileRequest(noteId, fileId, request, env) {
 	}
 
 	const fileMeta = files.find(f => f.id === fileId);
+	if (fileMeta){
+		if( fileMeta.type === 'telegram_document'){
+			//重定向到/api/tg-media-proxy/${fileMeta.id}
+			return Response.redirect(`/api/tg-media-proxy/${fileId}`, 302);
+		}
+	}
 
 	// 尝试从 R2 获取文件对象
 	const object = await env.NOTES_R2_BUCKET.get(`${id}/${fileId}`);
@@ -811,11 +817,7 @@ async function handleFileRequest(noteId, fileId, request, env) {
 
 	// --- 根据是否存在 fileMeta 来决定如何设置 headers ---
 	if (fileMeta) {
-		if( fileMeta.type === 'telegram_document'){
-			//重定向到/api/tg-media-proxy/${fileMeta.id}
-			return Response.redirect(`/api/tg-media-proxy/${fileMeta.id}`, 302);
-		}
-		else{// 【情况一：元数据存在】这是标准文件或旧的图片，按原逻辑处理
+		// 【情况一：元数据存在】这是标准文件或旧的图片，按原逻辑处理
 		const contentType = fileMeta.type || 'application/octet-stream';
 		const fileExtension = fileMeta.name.split('.').pop().toLowerCase();
 		const textLikeExtensions = ['yml', 'yaml', 'md', 'log', 'toml', 'sh', 'py', 'js', 'json', 'css', 'html'];
@@ -829,7 +831,7 @@ async function handleFileRequest(noteId, fileId, request, env) {
 		const isPreview = new URL(request.url).searchParams.get('preview') === 'true';
 		const disposition = isPreview ? 'inline' : 'attachment';
 		headers.set('Content-Disposition', `${disposition}; filename="${encodeURIComponent(fileMeta.name)}"`);}
-	} else {
+	 else {
 		// 【情况二：元数据不存在】这是新的 Telegram 图片，我们只确保它能被浏览器正确显示
 		// Content-Type 已经通过 object.writeHttpMetadata(headers) 从 R2 中设置好了，
 		// 这通常足够让浏览器正确渲染图片。
