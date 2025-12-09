@@ -1012,7 +1012,7 @@ async function handleTelegramProxy(request, env) {
 
 		// 4. 创建一个新的响应，传递上游响应的body和headers
 		const responseHeaders = new Headers(upstreamResponse.headers);
-		responseHeaders.set('Cache-Control', 'public, max-age=31536000, immutable');
+		responseHeaders.set('Cache-Control', 'public, max-age=86400, immutable');
 
 		// 根据文件扩展名设置 Content-Type
 		const filePath = fileInfo.result.file_path;
