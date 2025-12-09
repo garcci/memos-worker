@@ -1014,15 +1014,43 @@ async function handleTelegramProxy(request, env) {
 		const responseHeaders = new Headers(upstreamResponse.headers);
 		responseHeaders.set('Cache-Control', 'public, max-age=86400, immutable');
 
-		// 确保Content-Type被正确设置，如果上游没有提供则设为application/octet-stream
-		if (!responseHeaders.has('Content-Type')) {
-			responseHeaders.set('Content-Type', 'application/octet-stream');
-		}
-
-		// 添加Content-Disposition头以确保浏览器能正确识别文件名
-		const fileName = fileInfo.result.file_path.split('/').pop();
+		// 根据文件扩展名设置 Content-Type
+		const filePath = fileInfo.result.file_path;
+		const fileName = filePath ? filePath.split('/').pop() : `file_${fileId}`;
 		if (fileName) {
+			const extension = fileName.split('.').pop().toLowerCase();
+			const contentTypeMap = {
+				'jpg': 'image/jpeg',
+				'jpeg': 'image/jpeg',
+				'png': 'image/png',
+				'gif': 'image/gif',
+				'webp': 'image/webp',
+				'mp4': 'video/mp4',
+				'avi': 'video/x-msvideo',
+				'mov': 'video/quicktime',
+				'wmv': 'video/x-ms-wmv',
+				'pdf': 'application/pdf',
+				'doc': 'application/msword',
+				'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+				'xls': 'application/vnd.ms-excel',
+				'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+				'ppt': 'application/vnd.ms-powerpoint',
+				'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+				'txt': 'text/plain',
+				'json': 'application/json',
+				'xml': 'application/xml',
+				'zip': 'application/zip'
+			};
+
+			if (contentTypeMap[extension]) {
+				responseHeaders.set('Content-Type', contentTypeMap[extension]);
+			} else if (!responseHeaders.has('Content-Type')) {
+				responseHeaders.set('Content-Type', 'application/octet-stream');
+			}
+
 			responseHeaders.set('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
+		} else if (!responseHeaders.has('Content-Type')) {
+			responseHeaders.set('Content-Type', 'application/octet-stream');
 		}
 
 		return new Response(upstreamResponse.body, {
