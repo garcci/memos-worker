@@ -1064,7 +1064,13 @@ async function handleTelegramWebhook(request, env, secret) {
 			const fileRes = await fetch(downloadUrl);
 			if (!fileRes.ok) throw new Error("从 Telegram 下载图片失败。");
 			const fileId = crypto.randomUUID();
-			await bucket.put(`${noteId}/${fileId}`, fileRes.body);
+			
+			// 使用流式传输方式上传到 R2
+			const readableStream = fileRes.body;
+			await bucket.put(`${noteId}/${fileId}`, readableStream, {
+				httpMetadata: { contentType: fileRes.headers.get('content-type') || 'image/jpeg' }
+			});
+			
 			const internalFileUrl = `/api/files/${noteId}/${fileId}`;
 
 			picObjects.push(internalFileUrl); // 为了兼容性，图片直接存 URL 字符串
@@ -1092,7 +1098,13 @@ async function handleTelegramWebhook(request, env, secret) {
 				const fileRes = await fetch(downloadUrl);
 				if (!fileRes.ok) throw new Error("从 Telegram 下载视频失败。");
 				const fileId = crypto.randomUUID();
-				await bucket.put(`${noteId}/${fileId}`, fileRes.body);
+				
+				// 使用流式传输方式上传到 R2
+				const readableStream = fileRes.body;
+				await bucket.put(`${noteId}/${fileId}`, readableStream, {
+					httpMetadata: { contentType: fileRes.headers.get('content-type') || 'video/mp4' }
+				});
+				
 				const internalFileUrl = `/api/files/${noteId}/${fileId}`;
 				videoObjects.push(internalFileUrl);
 				mediaEmbeds.push(`<video src="${internalFileUrl}" width="100%" controls muted></video>`);
@@ -1122,7 +1134,13 @@ async function handleTelegramWebhook(request, env, secret) {
 				const fileRes = await fetch(downloadUrl);
 				if (!fileRes.ok) throw new Error("从 Telegram 下载文件失败。");
 				const fileId = crypto.randomUUID();
-				await bucket.put(`${noteId}/${fileId}`, fileRes.body);
+				
+				// 使用流式传输方式上传到 R2
+				const readableStream = fileRes.body;
+				await bucket.put(`${noteId}/${fileId}`, readableStream, {
+					httpMetadata: { contentType: fileRes.headers.get('content-type') || 'application/octet-stream' }
+				});
+				
 				filesMeta.push({
 					id: fileId,
 					name: document.file_name,
@@ -2002,7 +2020,10 @@ async function handleMergeNotes(request, env) {
 				const newKey = `${targetNote.id}/${file.id}`;
 				const object = await r2.get(oldKey);
 				if (object) {
-					await r2.put(newKey, object.body);
+					// 使用流式传输方式复制文件
+					await r2.put(newKey, object.body, {
+						httpMetadata: object.httpMetadata
+					});
 					await r2.delete(oldKey);
 				}
 			}
