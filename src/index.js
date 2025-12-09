@@ -1170,16 +1170,27 @@ async function handleTelegramWebhook(request, env, secret) {
 		// 文件处理（根据设置决定模式）
 		if (document) {
 			if (settings.telegramProxy) {
-				// --- 代理模式 ---
-				// 注意：代理文件时，我们无法在笔记中直接展示它，只能存一个元信息
-				filesMeta.push({
-					type: 'telegram_document', // 特殊类型
-					file_id: document.file_id,
-					name: document.file_name,
-					size: document.file_size
-				});
-				// 可以在正文加一个占位符，但这需要前端支持渲染
-				// finalContent += `\n\n[Proxy File: ${document.file_name}]`;
+				if (document.mime_type.startsWith ('image/')){
+					const proxyUrl = `/api/tg-media-proxy/${document.file_id}`;
+					picObjects.push(proxyUrl);
+					mediaEmbeds.push(`![${document.file_name}](${proxyUrl})`);
+				}else if (document.mime_type.startsWith ('video/')){
+					const proxyUrl = `/api/tg-media-proxy/${document.file_id}`;
+					videoObjects.push(proxyUrl);
+					mediaEmbeds.push(`<video src='${proxyUrl}' width='100%' controls muted></video>`);
+				}else {
+					// --- 代理模式 ---
+					// 注意：代理文件时，我们无法在笔记中直接展示它，只能存一个元信息
+					filesMeta.push({
+						type: 'telegram_document', // 特殊类型
+						file_id: document.file_id,
+						name: document.file_name,
+						size: document.file_size
+					});
+					// 可以在正文加一个占位符，但这需要前端支持渲染
+					// finalContent += `\n\n[Proxy File: ${document.file_name}]`;
+				}
+
 			} else {
 				// --- 二次上传模式 ---
 				const getFileUrl = `https://api.telegram.org/bot${botToken}/getFile?file_id=${document.file_id}`;
