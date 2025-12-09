@@ -1107,6 +1107,7 @@ async function handleTelegramWebhook(request, env, secret) {
 				// --- 代理模式 ---
 				const proxyUrl = `/api/tg-media-proxy/${photo.file_id}`;
 				picObjects.push(proxyUrl);
+				mediaEmbeds.push(`![](${proxyUrl})`);
 			} else {
 				const getFileUrl = `https://api.telegram.org/bot${botToken}/getFile?file_id=${photo.file_id}`;
 				const fileInfoRes = await fetch(getFileUrl);
