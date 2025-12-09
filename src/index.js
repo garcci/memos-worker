@@ -806,13 +806,27 @@ async function handleFileRequest(noteId, fileId, request, env) {
 			headers: request.headers
 		});
 		const response = await handleTelegramProxy(proxyRequest, env);
-		
+
 		if (!response.ok) {
-			return new Response(`Failed to fetch Telegram document: ${response.status} ${response.statusText}`, { status: response.status });
+			// 降级处理：尝试从本地 R2 存储获取文件
+			object = await env.NOTES_R2_BUCKET.get(`${id}/${fileId}`);
+			if (object === null) {
+				return new Response(`Failed to fetch Telegram document: ${response.status} ${response.statusText}`, { status: response.status });
+			}
+			// 如果在 R2 中找到了文件，继续后续处理流程
+		} else {
+			// 成功获取到代理响应，添加 CORS 头后直接返回
+			const modifiedHeaders = new Headers(response.headers);
+			modifiedHeaders.set('Access-Control-Allow-Origin', '*');
+			// 使用 ReadableStream 进行流式传输
+			const { readable, writable } = new TransformStream();
+			await response.body.pipeTo(writable);
+			return new Response(readable, {
+				status: response.status,
+				statusText: response.statusText,
+				headers: modifiedHeaders
+			});
 		}
-		
-		// 直接返回代理响应，因为它已经是流式传输的
-		return response;
 	} else {
 		// 从 R2 存储获取文件
 		object = await env.NOTES_R2_BUCKET.get(`${id}/${fileId}`);
@@ -827,6 +841,7 @@ async function handleFileRequest(noteId, fileId, request, env) {
 	object.writeHttpMetadata(headers); // 从 R2 对象中写入元数据（如 Content-Type）
 	headers.set('etag', object.httpEtag);
 	headers.set('Cache-Control', 'public, max-age=86400, immutable');
+	headers.set('Access-Control-Allow-Origin', '*'); // 添加 CORS 支持
 
 	// 根据是否存在 fileMeta 来决定如何设置 headers
 	if (fileMeta) {
@@ -851,7 +866,10 @@ async function handleFileRequest(noteId, fileId, request, env) {
 		headers.set('Content-Disposition', 'inline');
 	}
 
-	return new Response(object.body, { headers });
+	// 使用 ReadableStream 进行流式传输
+	const { readable, writable } = new TransformStream();
+	await object.body.pipeTo(writable);
+	return new Response(readable, { headers });
 }
 
 /**
