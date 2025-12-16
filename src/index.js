@@ -812,7 +812,37 @@ async function handleFileRequest(noteId, fileId, request, env) {
 		}
 
 		// 直接返回代理响应，因为它已经是流式传输的
-		return response;
+		// 但我们需要添加正确的文件名和其他头部信息
+		const newHeaders = new Headers(response.headers);
+		
+		// 设置正确的文件名和内容类型
+		if (fileMeta) {
+			const contentType = fileMeta.type || 'application/octet-stream';
+			const fileExtension = fileMeta.name.split('.').pop().toLowerCase();
+			const textLikeExtensions = ['yml', 'yaml', 'md', 'log', 'toml', 'sh', 'py', 'js', 'json', 'css', 'html'];
+
+			if (contentType.startsWith('text/') || textLikeExtensions.includes(fileExtension)) {
+				newHeaders.set('Content-Type', 'text/plain; charset=utf-8');
+			} else {
+				newHeaders.set('Content-Type', contentType);
+			}
+
+			const isPreview = new URL(request.url).searchParams.get('preview') === 'true';
+			const disposition = isPreview ? 'inline' : 'attachment';
+			newHeaders.set('Content-Disposition', `${disposition}; filename="${encodeURIComponent(fileMeta.name)}"`);
+		} else {
+			newHeaders.set('Content-Disposition', 'inline');
+		}
+		
+		// 确保缓存头设置正确
+		newHeaders.set('Cache-Control', 'public, max-age=86400, immutable');
+
+		// 创建一个新的响应，保持原有的body和status，但是使用新的headers
+		return new Response(response.body, {
+			status: response.status,
+			statusText: response.statusText,
+			headers: newHeaders
+		});
 	} else {
 		// 从 R2 存储获取文件
 		object = await env.NOTES_R2_BUCKET.get(`${id}/${fileId}`);
